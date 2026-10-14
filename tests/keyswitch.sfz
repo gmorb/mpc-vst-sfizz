@@ -1,0 +1,8 @@
+<control> label_cc1=Mod Wheel label_cc11=Expression label_cc21=Vibrato set_cc1=40 set_cc11=127
+<global> sw_lokey=24 sw_hikey=27 sw_default=24 amplitude_oncc11=100 cutoff=8000 cutoff_oncc1=2400 fil_type=lpf_2p
+<group> sw_last=24 sw_label=Sustain
+<region> sample=*sine lokey=36 hikey=96 pitch_keycenter=60
+<group> sw_last=25 sw_label=Staccato
+<region> sample=*saw lokey=36 hikey=96 pitch_keycenter=60 ampeg_release=0.05
+<group> sw_last=26 sw_label=Tremolo
+<region> sample=*triangle lokey=36 hikey=96 pitch_keycenter=60 pitchlfo_freq=6 pitchlfo_depth=20 pitchlfo_depth_oncc21=60

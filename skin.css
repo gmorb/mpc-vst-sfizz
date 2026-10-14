@@ -1,0 +1,2 @@
+/* sfizz for MPC OS: panels, labels and pills are art/*.png (design.py); the renderer only places controls. */
+.box, .box-label { display: none; }

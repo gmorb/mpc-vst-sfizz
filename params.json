@@ -1,0 +1,681 @@
+{
+ "name": "sfizz",
+ "params": [
+  {
+   "key": "stretch",
+   "name": "Stretch",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "dynamic_display": true
+  },
+  {
+   "key": "polyphony",
+   "name": "Max voices",
+   "options": [
+    "1",
+    "2",
+    "4",
+    "8",
+    "16",
+    "32",
+    "64",
+    "96",
+    "128",
+    "160",
+    "192",
+    "224",
+    "256"
+   ],
+   "default": 6
+  },
+  {
+   "key": "oversampling",
+   "name": "Oversampling",
+   "options": [
+    "1x",
+    "2x",
+    "4x",
+    "8x"
+   ],
+   "default": 0
+  },
+  {
+   "key": "preload",
+   "name": "Preload size",
+   "options": [
+    "4 kB",
+    "8 kB",
+    "16 kB",
+    "32 kB",
+    "64 kB",
+    "128 kB",
+    "256 kB"
+   ],
+   "default": 3
+  },
+  {
+   "key": "sustain_cancels",
+   "name": "Sustain cancels release",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "sample_quality",
+   "name": "Sample quality",
+   "options": [
+    "Nearest",
+    "Linear",
+    "Polynomial",
+    "Sinc 8",
+    "Sinc 12",
+    "Sinc 16",
+    "Sinc 24",
+    "Sinc 36",
+    "Sinc 48",
+    "Sinc 60",
+    "Sinc 72"
+   ],
+   "default": 3
+  },
+  {
+   "key": "osc_quality",
+   "name": "Oscillator quality",
+   "options": [
+    "Nearest",
+    "Linear",
+    "High",
+    "Dual-High"
+   ],
+   "default": 1
+  },
+  {
+   "key": "root_note",
+   "name": "Root key",
+   "options": [
+    "C",
+    "C#",
+    "D",
+    "D#",
+    "E",
+    "F",
+    "F#",
+    "G",
+    "G#",
+    "A",
+    "A#",
+    "B"
+   ],
+   "default": 0
+  },
+  {
+   "key": "root_oct",
+   "name": "Root octave",
+   "options": [
+    "-1",
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9"
+   ],
+   "default": 5
+  },
+  {
+   "key": "tuning_freq",
+   "name": "Frequency",
+   "min": 300,
+   "max": 500,
+   "default": 440,
+   "unit": "Hz",
+   "dynamic_display": true
+  },
+  {
+   "key": "tuning_preset",
+   "name": "Tuning preset",
+   "options": [
+    "English pitchpipe 380 (1720)",
+    "Handel fork 409 (1780)",
+    "Baroque 415",
+    "Handel fork 422.5 (1740)",
+    "Dresden opera 423.2 (1815)",
+    "French Law 435 (1859)",
+    "British Phil 439 (1896)",
+    "International 440",
+    "European 442",
+    "Germany, China 445",
+    "La Scala in Milan 451 (18th)"
+   ],
+   "default": 7
+  },
+  {
+   "key": "volume",
+   "name": "Volume",
+   "min": 0,
+   "max": 127,
+   "default": 100,
+   "dynamic_display": true
+  },
+  {
+   "key": "pan",
+   "name": "Pan",
+   "min": 0,
+   "max": 127,
+   "default": 64,
+   "dynamic_display": true
+  },
+  {
+   "key": "cc_1",
+   "name": "CC 1",
+   "min": 0,
+   "max": 127,
+   "default": 0,
+   "dynamic_name": true,
+   "dynamic_display": true
+  },
+  {
+   "key": "cc_2",
+   "name": "CC 2",
+   "min": 0,
+   "max": 127,
+   "default": 0,
+   "dynamic_name": true,
+   "dynamic_display": true
+  },
+  {
+   "key": "cc_3",
+   "name": "CC 3",
+   "min": 0,
+   "max": 127,
+   "default": 0,
+   "dynamic_name": true,
+   "dynamic_display": true
+  },
+  {
+   "key": "cc_4",
+   "name": "CC 4",
+   "min": 0,
+   "max": 127,
+   "default": 0,
+   "dynamic_name": true,
+   "dynamic_display": true
+  },
+  {
+   "key": "cc_5",
+   "name": "CC 5",
+   "min": 0,
+   "max": 127,
+   "default": 0,
+   "dynamic_name": true,
+   "dynamic_display": true
+  },
+  {
+   "key": "cc_6",
+   "name": "CC 6",
+   "min": 0,
+   "max": 127,
+   "default": 0,
+   "dynamic_name": true,
+   "dynamic_display": true
+  },
+  {
+   "key": "cc_7",
+   "name": "CC 7",
+   "min": 0,
+   "max": 127,
+   "default": 0,
+   "dynamic_name": true,
+   "dynamic_display": true
+  },
+  {
+   "key": "cc_8",
+   "name": "CC 8",
+   "min": 0,
+   "max": 127,
+   "default": 0,
+   "dynamic_name": true,
+   "dynamic_display": true
+  },
+  {
+   "key": "file_prev",
+   "name": "Previous file",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "file_next",
+   "name": "Next file",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "browse",
+   "name": "Browse",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "has_sw",
+   "name": "Has key switches",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "ccshow_1",
+   "name": "CC 1 shown",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "ccshow_2",
+   "name": "CC 2 shown",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "ccshow_3",
+   "name": "CC 3 shown",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "ccshow_4",
+   "name": "CC 4 shown",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "ccshow_5",
+   "name": "CC 5 shown",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "ccshow_6",
+   "name": "CC 6 shown",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "ccshow_7",
+   "name": "CC 7 shown",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "ccshow_8",
+   "name": "CC 8 shown",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "scala_prev",
+   "name": "Previous scale",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "scala_next",
+   "name": "Next scale",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "scala_reset",
+   "name": "Reset scale",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "br_up",
+   "name": "Browser up",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "br_pgup",
+   "name": "Browser page up",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "br_pgdn",
+   "name": "Browser page down",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "br_home",
+   "name": "Browser places",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "br_1",
+   "name": "Browser row 1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "br_2",
+   "name": "Browser row 2",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "br_3",
+   "name": "Browser row 3",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "br_4",
+   "name": "Browser row 4",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "br_5",
+   "name": "Browser row 5",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "br_6",
+   "name": "Browser row 6",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "br_7",
+   "name": "Browser row 7",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "br_8",
+   "name": "Browser row 8",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "file_name",
+   "name": "File",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "ks_badge",
+   "name": "Key switch note",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "ks_label",
+   "name": "Key switch",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "voices",
+   "name": "Voices",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "memory",
+   "name": "Memory",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "n_curves",
+   "name": "Curves",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "n_masters",
+   "name": "Masters",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "n_groups",
+   "name": "Groups",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "n_regions",
+   "name": "Regions",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "n_samples",
+   "name": "Samples",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "scala_name",
+   "name": "Scala file",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "status",
+   "name": "Status",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "br_loc",
+   "name": "Browser folder",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "br_page",
+   "name": "Browser page",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "ccl_1",
+   "name": "CC 1 number",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "ccl_2",
+   "name": "CC 2 number",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "ccl_3",
+   "name": "CC 3 number",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "ccl_4",
+   "name": "CC 4 number",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "ccl_5",
+   "name": "CC 5 number",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "ccl_6",
+   "name": "CC 6 number",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "ccl_7",
+   "name": "CC 7 number",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  },
+  {
+   "key": "ccl_8",
+   "name": "CC 8 number",
+   "min": 0,
+   "max": 0,
+   "default": 0,
+   "display": "string",
+   "type": "readout"
+  }
+ ]
+}

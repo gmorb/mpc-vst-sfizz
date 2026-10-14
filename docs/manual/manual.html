@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sfizz for MPC OS: Manual</title>
+<style>
+@font-face { font-family: "Roboto"; src: url("../../fonts/Roboto-Regular.ttf"); }
+@page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+:root { --dark: #2e3436; --frame: #d3d7cf; --box: #babdb6; --green: #006b0b; --accent: #fd9800; --ink: #1d2224; }
+* { box-sizing: border-box; }
+body { font-family: "Roboto", sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.45; margin: 0; }
+h1, h2, h3 { font-weight: 400; color: var(--dark); line-height: 1.2; }
+h2 { font-size: 17pt; margin: 0 0 8pt; padding-bottom: 4pt; border-bottom: 1.5pt solid var(--dark); break-after: avoid; }
+h3 { font-size: 12.5pt; margin: 14pt 0 4pt; break-after: avoid; }
+p { margin: 0 0 7pt; }
+ul, ol { margin: 0 0 8pt; padding-left: 20pt; }
+li { margin-bottom: 2.5pt; }
+code { font-family: "DejaVu Sans Mono", monospace; font-size: 8.8pt; background: #eef0ec; padding: 0.5pt 3pt; border-radius: 2pt; }
+pre { font-family: "DejaVu Sans Mono", monospace; font-size: 8.6pt; background: #eef0ec; padding: 7pt 9pt; border-radius: 4pt;
+      white-space: pre-wrap; margin: 0 0 9pt; break-inside: avoid; }
+table { width: 100%; border-collapse: collapse; margin: 0 0 10pt; font-size: 9.6pt; break-inside: auto; }
+th { background: var(--dark); color: #fff; font-weight: 400; text-align: left; padding: 4pt 6pt; }
+td { padding: 4pt 6pt; border-bottom: 0.6pt solid #c9ccc6; vertical-align: top; }
+tr { break-inside: avoid; }
+td.k { white-space: nowrap; color: var(--dark); }
+figure { margin: 4pt 0 10pt; break-inside: avoid; }
+figure img { width: 100%; display: block; border-radius: 4pt; border: 0.6pt solid #9da19a; }
+figcaption { font-size: 8.8pt; color: #5b6164; margin-top: 3pt; }
+.section { break-before: page; }
+.note { background: #fff4e0; border-left: 3pt solid var(--accent); padding: 6pt 9pt; margin: 0 0 10pt; break-inside: avoid; }
+.warn { background: #fde9e7; border-left: 3pt solid #c0392b; padding: 6pt 9pt; margin: 0 0 10pt; break-inside: avoid; }
+.cover { break-after: page; }
+.cover .toc { margin-top: 14pt; }
+.cover .band { background: var(--dark); color: #fff; border-radius: 6pt; padding: 22pt 24pt; }
+.cover .band img { height: 58pt; display: block; margin-bottom: 14pt; }
+.cover h1 { color: #fff; font-size: 26pt; margin: 0 0 6pt; }
+.cover .sub { color: #d3d7cf; font-size: 12pt; }
+.cover .meta { font-size: 9.5pt; color: #5b6164; }
+.toc ol { padding-left: 22pt; columns: 2; column-gap: 20pt; }
+.toc li { margin-bottom: 3pt; }
+.callouts { columns: 2; column-gap: 16pt; }
+.callouts li { break-inside: avoid; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10pt; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div>
+    <div class="band">
+      <img src="../../art/logo_text_shaded@2x.png" alt="sfizz">
+      <h1>sfizz for MPC OS</h1>
+      <div class="sub">User manual · version 1.0.0</div>
+    </div>
+    <figure style="margin-top:14pt"><img src="../screen.png" alt="The sfizz screen on the MPC"></figure>
+    <p>The sfizz 1.2.3 SFZ sampler as a native instrument plugin for Gen1 MPC OS hardware, on a one-page screen
+    modelled on sfizz's own editor. Play SFZ libraries straight from SD cards and USB drives, streamed from disk, with
+    key switches, the instrument's own controls on knobs, Scala tunings and high-quality interpolation.</p>
+  </div>
+  <div class="toc">
+    <h3>Contents</h3>
+    <ol>
+      <li>Requirements</li>
+      <li>Installing and uninstalling</li>
+      <li>Quick start</li>
+      <li>The screen</li>
+      <li>Loading instruments</li>
+      <li>Controls and MIDI</li>
+      <li>Settings reference</li>
+      <li>Tuning</li>
+      <li>Projects</li>
+      <li>Performance and sound quality</li>
+      <li>Troubleshooting</li>
+      <li>Credits and licences</li>
+    </ol>
+    <p class="meta">sfizz is by the sfztools contributors; this MPC port is a community project, not an official sfztools
+    release, and is not affiliated with inMusic or Akai. MPC and Force are trademarks of their owners.</p>
+  </div>
+</div>
+
+<div>
+<h2>1. Requirements</h2>
+<ul>
+  <li><b>A Gen1 MPC OS device</b> (32-bit ARM): Force, MPC Live, Live II, One, X or Key 61. Gen2 devices (MPC Live III,
+  64-bit) are not supported by this release; the installer refuses them.</li>
+  <li><b>MPC OS 3.x.</b> The screen uses the 3.x skin format.</li>
+  <li><b>Root shell access (SSH)</b> to the device. Stock MPC OS doesn't offer this: the device must be modded. The
+  installer edits MPC's settings file to register the plugin.</li>
+  <li><b>SFZ instruments</b> on an SD card, a USB drive or in the plugin's own library folder. sfizz reads WAV, FLAC, Ogg
+  Vorbis, AIFF and WavPack samples.</li>
+</ul>
+<div class="warn">Installing plugins this way is unofficial. Back up your projects and settings first, and use it at your own risk.</div>
+
+<h2 style="margin-top:16pt">2. Installing and uninstalling</h2>
+<h3>Scripted install (recommended)</h3>
+<ol>
+  <li>Download <code>sfizz-1.0.0-mpc-armv7.zip</code> from the project's GitHub Releases page and unzip it on your computer.</li>
+  <li>Copy the whole folder to the device:<pre>scp -r sfizz-1.0.0 root@&lt;device-ip&gt;:/tmp/</pre></li>
+  <li>Run the installer:<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.0/install.sh</pre></li>
+</ol>
+<p>The installer checks the device, asks for confirmation, <b>stops MPC</b> (save your project first), copies the plugin
+folder to <code>/sdcard/Synths/sfztools - VST - sfizz/</code>, backs up <code>MPC.settings</code>, adds sfizz to MPC's
+plugin list and starts MPC again. <code>-y</code> skips the question; <code>-t &lt;folder&gt;</code> installs into another
+Synths folder (for example on a card). Running it again upgrades in place.</p>
+<h3>Manual install</h3>
+<p>The zip's <code>INSTALL.md</code> lists the manual steps: copy the plugin folder, stop MPC, back up and edit
+<code>MPC.settings</code>, start MPC.</p>
+<h3>Uninstall</h3>
+<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.0/uninstall.sh</pre>
+<p>This removes the plugin folder and its plugin-list entry, and restarts MPC. SFZ files you put in the plugin's
+<code>sfizz/Instruments</code> folder are kept. Projects that used sfizz load without it.</p>
+
+<h2 style="margin-top:16pt">3. Quick start</h2>
+<ol>
+  <li>Copy an SFZ instrument folder to an SD card or USB drive (keep the <code>.sfz</code> file next to its samples
+  folder) and insert it. A good free one: <i>Salamander Grand Piano V3</i> (github.com/sfzinstruments/SalamanderGrandPiano).</li>
+  <li>On a track, add <b>sfizz</b> from the plugin browser (Instrument plugins). A new sfizz plays a simple sine.</li>
+  <li>Tap the <b>⌄</b> button at the top right of the file box. The browser opens.</li>
+  <li>Tap your card, then folders, then the <code>.sfz</code> file. The name, counts and memory update when it has loaded.</li>
+  <li>Play. Turn the Q-Links: they control Volume, Pan and the instrument's own controls.</li>
+  <li>Tap <b>⌄</b> again to close the browser.</li>
+</ol>
+</div>
+
+<div class="section">
+<h2>4. The screen</h2>
+<p>sfizz's desktop editor has four tabs. On the MPC they are side by side on one page: the header, then
+<b>Information</b>, <b>Controls</b> and <b>Settings</b>, then the piano.</p>
+<figure><img src="../screen_annotated.png" alt="Annotated screen"><figcaption>The screen with Salamander Grand Piano V3 loaded.</figcaption></figure>
+<ol class="callouts">
+  <li><b>File name</b> of the loaded instrument (without <code>.sfz</code>). Shows <i>Loading…</i> while loading.</li>
+  <li><b>‹ ›</b> load the previous / next SFZ file in the same folder.</li>
+  <li><b>⌄</b> opens and closes the SFZ browser.</li>
+  <li><b>Key switch</b>: the current key switch's note (badge) and name. Instruments without key switches show
+  <i>No key switch</i>.</li>
+  <li><b>Voices</b> sounding now · <b>Max</b> voices (tap to choose) · <b>Memory</b> used by sample data in RAM.</li>
+  <li><b>Volume</b> and <b>Pan</b>: MIDI CC 7 and CC 10 for the instrument (0–127; pan 64 is centre).</li>
+  <li><b>Information</b>: the instrument's curves, masters, groups, regions and samples.</li>
+  <li><b>Controls</b>: up to eight of the instrument's own controllers, named as the instrument names them, with their CC number.</li>
+  <li><b>Settings</b>: engine options, rendering quality and tuning (section 7).</li>
+  <li><b>Piano</b>: the keyboard and octave numbers (middle C is C4). It is a picture: it doesn't light up.</li>
+</ol>
+<div class="note">Not on the MPC screen, compared with the desktop editor: the output meters, the Theme and Zoom
+options, the "when freewheeling" quality settings (MPC never freewheels) and the file menu's Edit, Create and Open folder
+entries.</div>
+</div>
+
+<div class="section">
+<h2>5. Loading instruments</h2>
+<figure><img src="../browser.png" alt="The SFZ browser"><figcaption>The browser covers the Information and Controls panels while it is open.</figcaption></figure>
+<h3>The browser</h3>
+<ul>
+  <li><b>⌂</b> (home) lists the places: <b>Plugin Library</b> (the plugin's own <code>sfizz/Instruments</code> folder),
+  every SD card and USB drive, and <code>sdcard</code> (the internal storage).</li>
+  <li>Tap a folder (shown with a trailing <code>/</code>) to open it, and the <b>folder-up</b> button to go back.</li>
+  <li>Tap an SFZ file to load it. The loaded file is lit green. The browser stays open so you can try others.</li>
+  <li><b>˄ ˅</b> page through long folders, eight rows at a time; the counter shows where you are.</li>
+  <li>The bottom line reports the result: the number of regions and samples, or why something didn't load.</li>
+</ul>
+<h3>Where to put instruments</h3>
+<ul>
+  <li><b>On a card or drive</b>: any folder. Keep each instrument as its author ships it: the <code>.sfz</code> file
+  finds its samples by their path relative to it.</li>
+  <li><b>In the plugin library</b>: <code>/sdcard/Synths/sfztools - VST - sfizz/sfizz/Instruments/</code>. The
+  installer keeps this folder when you upgrade or uninstall.</li>
+</ul>
+<h3>Loading takes a moment</h3>
+<p>sfizz reads the start of every sample into memory (the <i>preload</i>) and streams the rest from disk while you play.
+A large library can take several seconds to load from a card. The plugin is silent while it loads; notes played during
+a long load are skipped.</p>
+<h3>Instruments that use the extended SFZ format</h3>
+<p>sfizz supports SFZ v1 and v2 and many ARIA extensions (key switches, CC curves, release triggers, crossfades,
+effects). Opcodes it doesn't support are ignored, as on the desktop.</p>
+</div>
+
+<div class="section">
+<h2>6. Controls and MIDI</h2>
+<h3>Q-Links</h3>
+<table>
+  <tr><th>Bank</th><th>Q-Links</th></tr>
+  <tr><td class="k">Bank 1</td><td>Volume, Pan, Controls 1–6</td></tr>
+  <tr><td class="k">Bank 2</td><td>Controls 7–8, Frequency, Stretch, Sample quality, Oscillator quality</td></tr>
+</table>
+<p>A Q-Link on an empty Controls slot does nothing. Settings that reload samples (Max voices, Oversampling, Preload size)
+are not on Q-Links, so a turn can't interrupt playing.</p>
+<h3>The Controls panel</h3>
+<p>sfizz lists the MIDI controllers the instrument uses. The panel shows up to eight of them: first those the instrument
+names (its <code>label_cc</code> lines), then the others by number. CC 7 and CC 10 are left out because they are the
+Volume and Pan knobs. A controller that doesn't fit still works from MIDI.</p>
+<h3>MIDI</h3>
+<ul>
+  <li><b>Every controller reaches the instrument</b>, including CC 20–35 (which some MPC plugins keep for Q-Links). Knobs
+  follow the controllers they show.</li>
+  <li>Pitch bend, channel and polyphonic aftertouch, and the sustain pedal (CC 64) go to sfizz.</li>
+  <li>All Sound Off (CC 120) and All Notes Off (CC 123) silence the instrument.</li>
+  <li>The plugin plays on any MIDI channel the track sends.</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>7. Settings reference</h2>
+<table>
+  <tr><th style="width:24%">Setting</th><th style="width:26%">Values (default in bold)</th><th>What it does</th></tr>
+  <tr><td class="k">Max (voices)</td><td>1, 2, 4, 8, 16, 32, <b>64</b>, 96, 128, 160, 192, 224, 256</td><td>How many voices can sound at once.
+  Lower it if the device runs out of CPU with dense playing.</td></tr>
+  <tr><td class="k">Volume</td><td>0–127 (<b>the instrument's default</b>, often 100)</td><td>MIDI CC 7 to the instrument.</td></tr>
+  <tr><td class="k">Pan</td><td>0–127 (<b>64</b>, centre)</td><td>MIDI CC 10 to the instrument.</td></tr>
+  <tr><td class="k">Preload size</td><td>4, 8, 16, <b>32</b>, 64, 128, 256 kB</td><td>How much of each sample sfizz keeps in memory;
+  the rest streams from disk. Raise it if a slow card makes note starts drop out; lower it to save memory. Changing it
+  reloads the samples.</td></tr>
+  <tr><td class="k">Oversampling</td><td><b>1x</b>, 2x, 4x, 8x</td><td>Upsamples the samples when they load. It can clean
+  up heavily pitched sounds, but multiplies memory and load time. Changing it reloads the samples.</td></tr>
+  <tr><td class="k">Sustain cancels release</td><td><b>Off</b>, On</td><td>sfizz's option of the same name: decides whether
+  holding the sustain pedal cancels release samples, as some other SFZ players do.</td></tr>
+  <tr><td class="k">Sample (quality)</td><td>Nearest, Linear, Polynomial, <b>Sinc 8</b>, Sinc 12, 16, 24, 36, 48, 60, 72</td><td>How
+  samples are resampled when played at another pitch or sample rate. Higher is cleaner and costs more CPU (section 10).</td></tr>
+  <tr><td class="k">Oscillator (quality)</td><td>Nearest, <b>Linear</b>, High, Dual-High</td><td>The same for sfizz's built-in
+  waveforms (<code>*sine</code>, <code>*saw</code> and wavetables).</td></tr>
+  <tr><td class="k">Scala file</td><td><b>DefaultScale</b> (equal temperament), files in <code>sfizz/Scales</code></td><td>Tap to step
+  to the next scale; × goes back to equal temperament.</td></tr>
+  <tr><td class="k">Root key</td><td>note <b>C</b> · octave <b>4</b></td><td>The key the scale starts on (C4 = MIDI note 60).</td></tr>
+  <tr><td class="k">Frequency</td><td>300–500 Hz (<b>440.0</b>)</td><td>Tuning of A4. Drag the value or turn its Q-Link; the ⌄ next to it
+  picks a historical pitch (Baroque 415, French Law 435, European 442 …).</td></tr>
+  <tr><td class="k">Stretch</td><td>0–100% (<b>0</b>)</td><td>Piano-style stretch tuning: octaves widen towards the ends of the keyboard.</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>8. Tuning</h2>
+<p>sfizz tunes with Scala (<code>.scl</code>) files, a common format for microtonal and historical scales; thousands are
+freely available online.</p>
+<ol>
+  <li>Copy <code>.scl</code> files to <code>/sdcard/Synths/sfztools - VST - sfizz/sfizz/Scales/</code>.</li>
+  <li>Tap the <b>Scala file</b> button to step through them (equal temperament first). Tap <b>×</b> to reset.</li>
+  <li>Set the <b>Root key</b> (note and octave) the scale is built on.</li>
+  <li>Set the reference pitch with <b>Frequency</b>, or pick a historical one from its ⌄ list.</li>
+</ol>
+<p>The new scale list is read when you step, so files copied while MPC runs show up without a restart.</p>
+
+<h2 style="margin-top:16pt">9. Projects</h2>
+<p>A saved project keeps, for each sfizz instance: the instrument file, the Scala file, every setting, and the positions
+of the Volume, Pan and Controls knobs. When the project loads, the instrument loads again in the background.</p>
+<ul>
+  <li>Instruments are saved by their full path. If the file has moved (another card, a renamed drive), sfizz looks for
+  a file of the same name in the plugin library, on every card and drive, and in <code>/sdcard</code>, up to four folders
+  deep, and loads the first it finds.</li>
+  <li>If it isn't found, the file name shows <i>(missing)</i> and the browser's status line says so. Load it again from
+  the browser and save the project.</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>10. Performance and sound quality</h2>
+<p>The Gen1 MPC's processor is shared by every track and plugin. What costs CPU in sfizz, from most to least:</p>
+<ul>
+  <li><b>Voices sounding</b>: sustained piano chords with the pedal down can use dozens. Lower <b>Max</b> if needed.</li>
+  <li><b>Sample quality</b>: per voice, Sinc 8 costs about the same as Polynomial (a few percent more in tests), Sinc 24
+  roughly 1.7× and Sinc 72 over 3× Polynomial.</li>
+  <li><b>Oversampling</b>: more data per voice.</li>
+</ul>
+<p><b>Loading samples while you play.</b> Desktop sfizz reads the whole rest of a sample file the moment a key is hit,
+on a high-priority thread; on the MPC that briefly maxed out the processor on every note with large libraries. This port
+reads files gradually instead, a little ahead of what is playing, and stops reading once a note no longer needs its file.
+The sound is exactly the same.</p>
+<p>Why Sinc 8 is the default: in offline measurements it removed about 24 dB of interpolation distortion compared with
+sfizz's desktop default (Polynomial) on bright samples pitched down, for a small extra cost. sfizz keeps samples in 32-bit
+float, so 24-bit libraries keep their full depth.</p>
+<div class="note">If you hear crackles: lower Sample quality to Polynomial, lower Max voices, or check that other plugins
+on the project aren't already using most of the CPU. If note starts drop out on a slow card, raise Preload size.</div>
+
+</div>
+<div class="section">
+<h2>11. Troubleshooting</h2>
+<table>
+  <tr><th style="width:34%">Problem</th><th>What to do</th></tr>
+  <tr><td>sfizz isn't in the plugin browser</td><td>Run <code>install.sh</code> again and let MPC restart. Check the device is
+  Gen1 and on MPC OS 3.x.</td></tr>
+  <tr><td>The screen is empty or wrong</td><td>MPC OS 2.x can't read this skin: update to 3.x.</td></tr>
+  <tr><td>An instrument loads but some notes are silent</td><td>Samples are missing: copy the whole instrument folder, keeping
+  its layout. Check that sample file names match the <code>.sfz</code> exactly.</td></tr>
+  <tr><td>"Could not load …"</td><td>The <code>.sfz</code> couldn't be read or parsed. Try it in sfizz on a computer.</td></tr>
+  <tr><td>"No SFZ files in …" after ‹ ›</td><td>The folder has no <code>.sfz</code> files at its top level; open a subfolder with the browser.</td></tr>
+  <tr><td>A card doesn't appear in the browser</td><td>Insert it before opening the browser, then tap ⌂ to refresh the list.</td></tr>
+  <tr><td>A Controls knob is missing</td><td>The panel shows eight controllers; the others still work from MIDI.</td></tr>
+  <tr><td>Silence for a moment after changing Max, Oversampling or Preload size</td><td>Expected: these reload the engine.</td></tr>
+</table>
+
+<h2 style="margin-top:16pt">12. Credits and licences</h2>
+<ul>
+  <li><b>sfizz</b> by the sfztools contributors, BSD-2-Clause (github.com/sfztools/sfizz). This port uses the 1.2.3 engine with
+  one change, to how it reads sample files (the sound is unchanged); its libraries keep their own licences.</li>
+  <li><b>VST2 wrapper, skin tools and installer</b>: mpc-vst-plugins by sd88me and contributors, MIT.</li>
+  <li><b>Artwork</b>: drawn after sfizz's editor; the sfizz logo and emblem come from sfizz-ui (BSD-2-Clause). Roboto, Apache-2.0.</li>
+  <li><b>This port</b>: BSD-2-Clause. Source: github.com/gmorb/mpc-vst-sfizz.</li>
+</ul>
+</div>
+
+</body>
+</html>

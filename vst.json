@@ -1,0 +1,33 @@
+{
+  "name": "sfizz",
+  "vendor": "sfztools",
+  "uid": "SfzM",
+  "version": 1000,
+  "so": "sfizz_mpc.so",
+  "params": "params.json",
+  "layout": "layout.conf",
+  "art": "html",
+  "cc": false,
+  "nrpn": false,
+  "defines": {
+    "MODULE_SUBDIR": "\"sfizz\"",
+    "HAS_DISPLAY_REV": 1,
+    "PARAM_TEXT_MAX": 64
+  },
+  "build": {
+    "root": ".",
+    "sources": [
+      "src/sfizz_mpc.cpp"
+    ],
+    "cflags": [
+      "-std=gnu++17",
+      "-Isrc/sfizz/src"
+    ],
+    "libs": [
+      "build/libsfizz_x86_all.a",
+      "-ldl",
+      "-lm"
+    ]
+  },
+  "skin_post": "skin_post.py"
+}
