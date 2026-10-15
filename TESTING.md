@@ -19,6 +19,50 @@
    stream, closing mid-stream, three rounds): no errors. One UBSan note in `Buffer.h:188` is upstream's (it also appears
    with upstream loading).
 
+## Offline (done for 1.0.1, 2026-10-14)
+All of the 1.0.0 list again (host test PASSED; `tools/test_arm.sh` with Salamander Grand Piano V3 and
+`tests/keyswitch.sfz`: both load, play and close cleanly), plus, with the harnesses described below:
+1. **Output vs upstream sfizz 1.2.3**, deterministic (samples in RAM), a test instrument with pitch-bend and pan sweeps:
+   bit-identical at every sample quality on x86 and at Linear to Sinc 12 on ARM (qemu-arm), except Sinc 8 (max
+   difference 1e-7, −130 dB). The `.so`'s engine was built for both from the same tree.
+2. **ARM CPU** (qemu-arm with QEMU's `hotblocks` plugin, instructions in `Synth::renderBlock` and below, 16 held
+   Salamander voices, 1500 blocks of 128 frames, minus a run of 0 blocks), instructions per voice per block, upstream →
+   1.0.1: Polynomial 36 K → 19.8 K, Sinc 8 55 K → 22.0 K, Sinc 24 88 K → 75.1 K.
+3. **Chord hammer**, Salamander FLAC, 64 voices, pedal down, a 4–9 key chord every 150 ms for 8 s, in real time:
+   - x86, 192 MB budget: output identical to a run where the streamer has all the time it wants; 0 notes cut;
+     peak RSS 62 → 251 MB (182 MB decoded audio). 1.0.0 peaked at 479 MB in the same test (memory never given back).
+   - x86, 48 MB / 96 MB budgets: 154 / 123 oldest files retired (faded), 46 / 34 notes cut; 1.0.0 cut ~2700 / ~2200.
+   - ARM (qemu-arm, slower than real time), 192 MB: 0 cut; 48 MB: 111–124 retired, 69–78 cut. No crash.
+   - 1.0.0 crashed the x86 test about one run in four (`std::sort` in the streamer, on values the audio thread moves);
+     ten runs after the fix: none.
+4. **Sanitizers**: two instances sharing a 24 MB budget, chords and fast notes with the pedal, instrument switches,
+   preload and voice-count changes while files stream, instances closed mid-stream, two rounds. ASan/UBSan: no errors.
+   TSan: only reads of up to 4 frames past the decoded end by the interpolator at the very edge (upstream does the same;
+   the values read are 0 or the final ones) and sfizz's shared random generator (upstream, harmless).
+
+### The offline harnesses (`tests/offline/`)
+Built against `build/libsfizz_x86_all.a` (from `tools/build_x86_test_libs.sh`) on x86, or against the armhf archives in
+`build/sfizz-armhf` (from `build.sh so`) with `-DAB_MAIN -shared` for ARM, run through `abhost.c` under qemu-arm with
+`ABLIB=./lib….so`. For a pristine comparison build, configure upstream sfizz 1.2.3 the same way.
+```
+g++ -O2 -std=gnu++17 -Isrc/sfizz/src tests/offline/hammer.cpp build/libsfizz_x86_all.a -lpthread -ldl -o hammer
+./hammer "Salamander Grand Piano V3.sfz" rt out_rt.f32 192 1     # rt|slow, output, budget MB, gentle 1|0
+./hammer "Salamander Grand Piano V3.sfz" slow out_slow.f32 192 1
+python3 tests/offline/cmpout.py out_rt.f32 out_slow.f32          # 0 blocks differing: nothing was cut
+L=$(find build/sfizz-armhf/ -name '*.a' -not -path '*CMakeFiles*' | sort)
+build/toolchain/zc++ -O2 -std=gnu++17 -DAB_MAIN -fPIC -shared -Isrc/sfizz/src tests/offline/hammer.cpp \
+  -Wl,--start-group $L -Wl,--end-group -lpthread -ldl -lm -o libhammer.so
+arm-linux-gnueabihf-gcc tests/offline/abhost.c -ldl -o abhost
+ABLIB=./libhammer.so qemu-arm -L /usr/arm-linux-gnueabihf ./abhost "…/Salamander Grand Piano V3.sfz" rt out.f32 48 1
+```
+- `cmpd.cpp`: deterministic render of `det.sfz` (`cmpd <sfz> <quality> <out.raw> [bend|pan]`), for comparing builds.
+- `stress2.cpp`: the sanitizer stress (link with `src/sfizz_mpc.cpp` and the kit's `wrapper/` includes; `stress2 <data
+  folder> <sfz> [another sfz]`); build sfizz with `-fsanitize=address,undefined` or `-fsanitize=thread`.
+- `armprof.cpp` + `hotblocks_agg.py`: ARM instruction profile. QEMU must be built with plugins (`contrib/plugins`):
+  `ABLIB=./libab_prof.so qemu-arm -plugin libhotblocks.so -d plugin ./abhost render <sfz> <quality> 16 1500 > hot.txt`,
+  the same with 0 blocks into `hot0.txt`, then `python3 hotblocks_agg.py libab_prof.so hot.txt hot0.txt 1500 16`. The
+  hotblocks plugin keeps 20 blocks by default: raise its limit in `contrib/plugins/hotblocks.c` (4000 here).
+
 ## On the device (to do)
 | # | Step | Result |
 |---|---|---|

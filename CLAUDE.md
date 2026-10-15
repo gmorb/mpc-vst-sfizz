@@ -14,7 +14,7 @@ and `catalog/README.md` too; this file adds what is specific to this port.
 | Catalog id | `sfizz`; entry `packaging/catalog/sfizz.json`; asset `sfizz-<version>-mpc-armv7.zip` |
 | Licence | BSD-2-Clause |
 | Kit commit | `e18a0a1da84515096d354f399dd4cd7f9c079fb5` (build and check against this one) |
-| Engine | sfizz 1.2.3 vendored in `src/sfizz` (`src/VENDORED.md`), one local patch: `patches/0001-gentle-background-loading.patch` |
+| Engine | sfizz 1.2.3 vendored in `src/sfizz` (`src/VENDORED.md`), local changes in one patch: `patches/0001-sfizz-for-mpc-os.patch` |
 | MPC OS | 3.x only (the skin uses the 3.x format; the `.so` itself needs glibc ≤ 2.27) |
 
 **Parameter order is frozen** (`params.json`, VST index = position). MPC stores values by index: append new parameters at
@@ -60,50 +60,54 @@ The host test's `note 60` line may say `warn` (it plays during a voice-count cha
 failure. Look at every preview image, and at a `tools/mock_screen.py` render, after any skin change.
 
 ## Release
-1. Bump `version` in `vst.json` (e.g. 1001 for 1.0.1) and the version below. Update `RELEASE_NOTES.md`.
+1. Bump `version` in `vst.json` (e.g. 1002 for 1.0.2) and the version below. Update `RELEASE_NOTES.md`.
 2. Build and test as above.
 3. Package with the catalog fields (no other way of making the zip):
    ```
    python3 "$MPC_VST/tools/release.py" --so build/sfizz_mpc.so --skin "build/skin/sfztools - VST - sfizz" \
-     --entry build/pluginlist-entry.xml --version 1.0.0 --extra data:sfizz --user-data sfizz/Instruments \
+     --entry build/pluginlist-entry.xml --version 1.0.1 --extra data:sfizz --user-data sfizz/Instruments \
      --repo gmorb/mpc-vst-sfizz --license BSD-2-Clause --id sfizz [--bench build/bench.txt] \
      --about "The sfizz 1.2.3 SFZ sampler (disk streaming, key switches, CC controls, Scala tuning) with a one-page screen modelled on sfizz's own editor." -o dist
-   python3 "$MPC_VST/tools/catalog_check.py" dist/sfizz-1.0.0-mpc-armv7.zip --catalog --expect-id sfizz --expect-repo gmorb/mpc-vst-sfizz
+   python3 "$MPC_VST/tools/catalog_check.py" dist/sfizz-1.0.1-mpc-armv7.zip --catalog --expect-id sfizz --expect-repo gmorb/mpc-vst-sfizz
    ```
-   The check must end `OK: sfizz 1.0.0`.
+   The check must end `OK: sfizz 1.0.1`.
 4. Device smoke test with that exact zip (TESTING.md, "On the device"). Ask before installing on someone's device: it
    restarts MPC. CPU: `"$MPC_VST/tools/bench.sh" build/sfizz_mpc.so <ip> -j | tee build/bench.txt` with a sampled
    instrument; re-package with `--bench` if you ran it.
 5. Tag and publish with `gh` (every claim backed by the command's output):
    ```
-   git tag v1.0.0 && git push origin main v1.0.0
-   gh release create v1.0.0 --repo gmorb/mpc-vst-sfizz --draft --title "sfizz for MPC OS 1.0.0" \
-     --notes-file RELEASE_NOTES.md dist/sfizz-1.0.0-mpc-armv7.zip
-   gh release view v1.0.0 --repo gmorb/mpc-vst-sfizz --json isDraft,assets,url     # check
-   gh release edit v1.0.0 --repo gmorb/mpc-vst-sfizz --draft=false --latest        # only after the device test
+   git tag v1.0.1 && git push origin main v1.0.1
+   gh release create v1.0.1 --repo gmorb/mpc-vst-sfizz --draft --title "sfizz for MPC OS 1.0.1" \
+     --notes-file RELEASE_NOTES.md dist/sfizz-1.0.1-mpc-armv7.zip
+   gh release view v1.0.1 --repo gmorb/mpc-vst-sfizz --json isDraft,assets,url     # check
+   gh release edit v1.0.1 --repo gmorb/mpc-vst-sfizz --draft=false --latest        # only after the device test
    ```
 6. After a device test, add it to `tested.json` (root, default branch), truthfully:
-   `[{"version": "1.0.0", "device": "MPC Live II", "firmware": "3.x.y", "date": "YYYY-MM-DD"}]`.
+   `[{"version": "1.0.1", "device": "MPC Live II", "firmware": "3.x.y", "date": "YYYY-MM-DD"}]`.
 
 ## List it in the catalog (first release only)
 ```
 gh repo fork sd88me/mpc-vst-plugins --clone --remote && cd mpc-vst-plugins && git checkout -b add-sfizz
 cp ../mpc-vst-sfizz/packaging/catalog/sfizz.json catalog/plugins/sfizz.json
 python3 tools/catalog_build.py --check-registry                                  # entry valid
-curl -sI https://raw.githubusercontent.com/gmorb/mpc-vst-sfizz/v1.0.0/docs/screen.png | head -1    # 200
+curl -sI https://raw.githubusercontent.com/gmorb/mpc-vst-sfizz/v1.0.1/docs/screen.png | head -1    # 200
 git add catalog/plugins/sfizz.json && git commit -m "Add sfizz" && git push -u origin add-sfizz
 gh pr create --repo sd88me/mpc-vst-plugins --head gmorb:add-sfizz --title "Add sfizz" \
-  --body "sfizz 1.0.0: the sfizz 1.2.3 SFZ engine for Gen1 MPC / Force. Release: <the real release URL>"
+  --body "sfizz 1.0.1: the sfizz 1.2.3 SFZ engine for Gen1 MPC / Force. Release: <the real release URL>"
 gh pr view --repo sd88me/mpc-vst-plugins --json url,state,number                # check
 ```
 No versions or checksums in the entry: the catalog reads them from the release. Later releases need no PR.
 The screenshot link is pinned to the tag: it must exist in that tag (`docs/screen.png`).
 
 ## Gotchas (learned building it)
-- **Per-note CPU spikes** came from sfizz's file streaming, not from rendering: upstream decodes a played sample's whole
-  file at once on a real-time thread. The vendored patch paces it (see `src/VENDORED.md`). Keep it when re-vendoring, and
-  re-measure with a large FLAC piano before a release. Don't "optimise" by lowering quality: rendering costs ~0.2 ms of CPU
-  per second of a voice on x86; the loader was the problem.
+- **Per-note CPU spikes** came from sfizz's file streaming: upstream decodes a played sample's whole file at once on a
+  real-time thread, with no memory limit. The vendored patch streams it within a budget (see `src/VENDORED.md`). Keep it
+  when re-vendoring, and re-measure with a large FLAC piano before a release. Don't "optimise" by lowering quality.
+- **The streamer must never sort or decide on live values** the audio thread moves (`readHead`): snapshot them first.
+  Sorting on them made `std::sort` read past its array and crashed MPC with many keys held (fixed in 1.0.1).
+- **Measure ARM CPU as instructions**, not x86 time: `qemu-arm` with the hotblocks plugin (TESTING.md). In 1.0.1 the
+  NEON helpers were silently compiled as scalar because `HelpersNEON.cpp` didn't include `SIMDConfig.h`; only the
+  disassembly / instruction counts showed it.
 - **Parameter 0**: MPC toggles parameter 0 on insert and on every STOP; the kit's wrapper defers host sets of it, which
   breaks stepping tests for an option or whole-number parameter there. Keep a continuous knob (`stretch`) at index 0.
 - **0-127 knobs** (Volume, Pan, CC slots) are continuous knobs with `dynamic_display`, not `"display": "int"`: with int

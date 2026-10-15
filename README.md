@@ -10,8 +10,8 @@ Requires a modded unit with root access, as every plugin from that project does.
 **Download** the `sfizz-<version>-mpc-armv7.zip` from [Releases](../../releases). **Manual:** [docs/MANUAL.pdf](docs/MANUAL.pdf).
 
 ## Install
-1. Unzip, copy the `sfizz-<version>` folder to the device: `scp -r sfizz-1.0.0 root@<device-ip>:/tmp/`
-2. Run the installer: `ssh root@<device-ip> sh /tmp/sfizz-1.0.0/install.sh` (it stops and restarts MPC: save first).
+1. Unzip, copy the `sfizz-<version>` folder to the device: `scp -r sfizz-1.0.1 root@<device-ip>:/tmp/`
+2. Run the installer: `ssh root@<device-ip> sh /tmp/sfizz-1.0.1/install.sh` (it stops and restarts MPC: save first).
 3. Add **sfizz** to a track from the plugin browser. Tap ⌄ to open an SFZ from an SD card or USB drive.
 
 Requirements: MPC OS 3.x, a Gen1 (32-bit) device, root SSH. The zip's `INSTALL.md` also has the manual steps.
@@ -46,16 +46,17 @@ Samples stream from disk (sfizz's preload + streaming), so libraries larger than
 Preload size if a slow card gives dropouts at note starts. A good free library to start with:
 [Salamander Grand Piano V3](https://github.com/sfzinstruments/SalamanderGrandPiano) (16 layers, 24-bit FLAC, CC BY 3.0).
 
-## CPU
-sfizz normally reads the whole rest of a sample file the moment a key is hit, on a real-time thread: with big piano
-libraries that spiked the MPC's CPU to 100% on every note. This port streams files gently instead (normal priority, a
-little ahead of playback, stopping when a note no longer needs its file). The sound is bit-identical; the worst loading
-burst measured about 5× lower. Details in `src/VENDORED.md`.
+## CPU and memory
+sfizz normally reads the whole rest of a sample file the moment a key is hit, on a real-time thread, and keeps it with no
+memory limit: with big piano libraries that spiked the MPC's CPU to 100% on every note, and enough chords could exhaust
+memory. This port streams files a little ahead of each note on a normal-priority thread, within a memory budget (a third
+of the free memory, 48 to 384 MB); when it runs out, the notes that have played longest fade out first. Rendering is
+about 2.5× cheaper per voice on ARM than upstream at Sinc 8 (NEON paths, fewer per-sample computations), with the same
+sound. Details and measurements in `src/VENDORED.md`.
 
 ## Sound quality
 Sample quality defaults to **Sinc 8**. Measured offline it removes about 24 dB of interpolation distortion over sfizz's
-own default (Polynomial) on samples pitched down, for about 4% more CPU per voice than Polynomial on x86. Polynomial is
-the cheapest; Sinc 24 and up are cleaner still. Samples are kept in 32-bit float, so 24-bit libraries keep their depth.
+own default (Polynomial) on samples pitched down, for a little more CPU per voice. Polynomial is the cheapest; Sinc 24 and up are cleaner still. Samples are kept in 32-bit float, so 24-bit libraries keep their depth.
 
 ## Build
 ```
@@ -75,7 +76,7 @@ MPC_VST=$PWD/mpc-vst-plugins HTML_ART_PYTHON=/path/to/python-with-playwright-and
 - `packaging/catalog/sfizz.json`: the MPC OS plugin catalog entry; `docs/`: manual, screenshots
 
 ## Credits and licence
-sfizz is by the [sfztools](https://github.com/sfztools) contributors; this port uses its 1.2.3 engine with one documented change to sample streaming (`src/VENDORED.md`) and draws
+sfizz is by the [sfztools](https://github.com/sfztools) contributors; this port uses its 1.2.3 engine with documented changes to sample streaming, memory and speed (`src/VENDORED.md`) and draws
 its screen after sfizz's editor (logo and emblem from sfizz-ui's resources, Roboto). It is not an official sfztools
 release. BSD-2-Clause (`LICENSE`), as sfizz; sfizz's dependencies keep their own licences (`src/sfizz/external`);
 Roboto is Apache-2.0. MPC and Force are trademarks of inMusic; this project is not affiliated with inMusic or Akai.
