@@ -5,6 +5,7 @@
 // If not, contact the sfizz maintainers at https://github.com/sfztools/sfizz
 
 #include "ADSREnvelope.h"
+#include <algorithm>
 #include "Config.h"
 #include "SIMDHelpers.h"
 #include "MathHelpers.h"
@@ -147,10 +148,14 @@ void ADSREnvelope::getBlockInternal(absl::Span<Float> output) noexcept
                 shouldRelease = true;
                 break;
             }
-            while (count < size) {
-                if (currentValue > sustain)
-                    currentValue += transitionDelta;
+            // [sfizz for MPC OS] settled on the sustain level (the usual case for a held note): the rest is constant
+            while (count < size && currentValue > sustain) {
+                currentValue += transitionDelta;
                 output[count++] = currentValue;
+            }
+            if (count < size) {
+                std::fill(output.begin() + count, output.begin() + size, currentValue);
+                count = size;
             }
             break;
         case State::Release:

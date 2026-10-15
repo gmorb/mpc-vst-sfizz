@@ -27,6 +27,9 @@ static TimePoint highResNow()
  * @brief Creates an RAII logger which fills or adds to a duration on destruction
  *
  */
+// [sfizz for MPC OS] the per-voice and per-callback timings only feed sfizz's statistics and log files, which the
+// MPC never reads. Each cost two clock reads (about ten per voice per block), a measurable share of a voice on the
+// MPC's CPU, so ScopedTiming is a no-op here. The figures it would fill stay 0.
 struct ScopedTiming
 {
     enum class Operation
@@ -35,30 +38,7 @@ struct ScopedTiming
         replaceDuration
     };
     ScopedTiming() = delete;
-    /**
-     * @brief Construct a new Scoped Logger object
-     *
-     * @param targetDuration
-     * @param op
-     */
-    ScopedTiming(double& targetDuration, Operation op = Operation::replaceDuration)
-    : targetDuration(targetDuration), operation(op) {}
-    ~ScopedTiming()
-    {
-        switch(operation)
-        {
-        case(Operation::replaceDuration):
-            targetDuration = (highResNow() - creationTime).count();
-            break;
-        case(Operation::addToDuration):
-            targetDuration += (highResNow() - creationTime).count();
-            break;
-        }
-    }
-
-    double& targetDuration;
-    const Operation operation;
-    const TimePoint creationTime { highResNow() };
+    ScopedTiming(double&, Operation = Operation::replaceDuration) noexcept {}
 };
 
 }

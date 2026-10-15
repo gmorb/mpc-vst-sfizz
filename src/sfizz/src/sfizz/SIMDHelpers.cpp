@@ -9,6 +9,7 @@
 #include "utility/Debug.h"
 #include "simd/HelpersSSE.h"
 #include "simd/HelpersAVX.h"
+#include "simd/HelpersNEON.h"   // [sfizz for MPC OS]
 #include "cpuid/cpuinfo.hpp"
 #include <array>
 #include <mutex>
@@ -141,6 +142,16 @@ void SIMDDispatch<float>::setStatus(SIMDOps op, bool enable)
     if (info.has_neon()) {
         switch (op) {
             default: break;
+            SIMD_OP(gain)            // [sfizz for MPC OS] simd/HelpersNEON.h
+            SIMD_OP(gain1)
+            SIMD_OP(multiplyAdd)
+            SIMD_OP(multiplyAdd1)
+            SIMD_OP(multiplyMul)
+            SIMD_OP(multiplyMul1)
+            SIMD_OP(add)
+            SIMD_OP(add1)
+            SIMD_OP(subtract)
+            SIMD_OP(subtract1)
         }
     }
 #undef SIMD_OP
@@ -175,6 +186,12 @@ void SIMDDispatch<float>::resetStatus()
     setStatus(SIMDOps::upsampling, true);
     setStatus(SIMDOps::clampAll, false);
     setStatus(SIMDOps::allWithin, true);
+#if SFIZZ_CPU_FAMILY_AARCH64 || SFIZZ_CPU_FAMILY_ARM
+    // [sfizz for MPC OS] the NEON element-wise helpers (same results as scalar; see simd/HelpersNEON.h)
+    for (SIMDOps op : { SIMDOps::add, SIMDOps::add1, SIMDOps::subtract, SIMDOps::subtract1, SIMDOps::multiplyAdd,
+                        SIMDOps::multiplyAdd1, SIMDOps::multiplyMul, SIMDOps::multiplyMul1 })
+        setStatus(op, true);
+#endif
 }
 
 ///

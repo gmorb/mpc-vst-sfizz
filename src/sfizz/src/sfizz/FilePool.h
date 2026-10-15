@@ -45,6 +45,9 @@
 #include <thread>
 #include <future>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
+#include <vector>
 class ThreadPool;
 
 namespace sfz {
@@ -94,6 +97,7 @@ struct FileData
         availableFrames = other.availableFrames.load();
         lastViewerLeftAt = other.lastViewerLeftAt;
         status = other.status.load();
+        readHead = other.readHead.load();
     }
     FileData& operator=(FileData&& other)
     {
@@ -105,6 +109,7 @@ struct FileData
         availableFrames = other.availableFrames.load();
         lastViewerLeftAt = other.lastViewerLeftAt;
         status = other.status.load();
+        readHead = other.readHead.load();
         return *this;
     }
 
@@ -116,6 +121,16 @@ struct FileData
     std::atomic<size_t> availableFrames { 0 };
     std::atomic<int> readerCount { 0 };
     std::chrono::time_point<std::chrono::high_resolution_clock> lastViewerLeftAt;
+    // [sfizz for MPC OS] the furthest frame any voice has asked for; the streamer keeps a little ahead of it
+    std::atomic<size_t> readHead { 0 };
+    // [sfizz for MPC OS] bumped when memory runs short and this file's data must go: the voices that started before
+    // fade out quickly first (voices that start afterwards are not affected)
+    std::atomic<unsigned> retireEpoch { 0 };
+    void noteRead(size_t frame) noexcept
+    {
+        size_t current = readHead.load(std::memory_order_relaxed);
+        while (frame > current && !readHead.compare_exchange_weak(current, frame, std::memory_order_relaxed)) {}
+    }
 
     LEAK_DETECTOR(FileData);
 };
@@ -308,7 +323,7 @@ public:
      * method on the audio thread as it will spinlock.
      *
      */
-    void emptyFileLoadingQueues() noexcept;   // [sfizz for MPC OS] stops and waits for gentle streams (was a no-op)
+    void emptyFileLoadingQueues() noexcept;   // [sfizz for MPC OS] also stops the streams (was a no-op)
     /**
      * @brief Wait for the background loading to finish for all promises
      * in the queue.
@@ -320,13 +335,20 @@ public:
      */
     static void raiseCurrentThreadPriority() noexcept;
 
-    /**
-     * @brief [sfizz for MPC OS] Gentle background loading, for weak CPUs (Gen1 MPC, RK3288). Process-wide.
-     * Off (upstream): a note-on streams the whole rest of its sample file at once, on a real-time-priority thread.
-     * On: each file streams in steps at normal priority, staying a few seconds ahead of playback, gives its worker thread
-     * back between steps, and stops (freeing what it read) once no voice uses the file. The audio is unchanged.
-     */
+    // ---- [sfizz for MPC OS] bounded streaming, for small devices (Gen1 MPC, RK3288, 32-bit) ----
+    // Upstream decodes the whole rest of a sample file on every note-on, at once, on a real-time thread, and keeps it
+    // in memory: on a 2 GB device fast playing exhausted memory (MPC was killed) and every key hit spiked the CPU. With
+    // gentle streaming one low-priority thread per file pool decodes each playing file only a little ahead of the
+    // furthest voice reading it, within a memory budget shared by every instance; idle files stay cached until the
+    // budget needs their memory (oldest first) or they have been idle for a while. The audio is unchanged.
     static void setGentleLoading(bool gentle) noexcept;
+    static void noteUnderrun() noexcept;
+    static void setStreamBudget(size_t bytes) noexcept;   // decoded sample memory, all instances together
+    struct StreamStats { size_t bytes; size_t budget; unsigned streams; unsigned starved; unsigned failed; };
+    static StreamStats streamStats() noexcept;
+    // Bracket every render block, so memory is never freed while a block may still read it.
+    void renderBlockBegin() noexcept { renderEpoch.fetch_add(1); }
+    void renderBlockEnd() noexcept { renderEpoch.fetch_add(1); }
     /**
      * @brief Change whether all samples are loaded in ram.
      * This will trigger a purge and reloading.
@@ -349,8 +371,8 @@ private:
     uint32_t preloadSize { config::preloadSize };
 
     // Signals
-    volatile bool dispatchFlag { true };
-    volatile bool garbageFlag { true };
+    std::atomic<bool> dispatchFlag { true };
+    std::atomic<bool> garbageFlag { true };
     RTSemaphore dispatchBarrier;
     RTSemaphore semGarbageBarrier;
 
@@ -370,18 +392,29 @@ private:
     void dispatchingJob() noexcept;
     void garbageJob() noexcept;
     void loadingJob(const QueuedFileData& data) noexcept;
-    // [sfizz for MPC OS] gentle loading: a note's first seconds load in a pool job, then this one ordinary-priority thread
-    // tops every playing file up in turn, a little ahead of playback, and lets go of files no voice reads any more.
+
+    // [sfizz for MPC OS] bounded streaming (see setGentleLoading)
     struct GentleStream;
-    enum class GentleResult { Continue, Finished };
-    GentleResult gentleStep(GentleStream& st) noexcept;
-    void gentleThreadJob() noexcept;
-    std::atomic<unsigned> streamGeneration { 0 };   // bumped when files are cleared: streams of the old ones stop
-    std::mutex gentleListMutex;                     // the list of streams
-    std::mutex gentleWorkMutex;                     // held while the thread works on streams
-    std::vector<std::shared_ptr<GentleStream>> gentleStreams;
-    std::atomic<bool> gentleRun { true };
-    std::thread gentleThread;
+    void streamerJob() noexcept;
+    void streamerTick() noexcept;
+    enum class BeginResult { Ok, Wait, Failed };
+    BeginResult streamBegin(GentleStream& st) noexcept;
+    bool streamClaimAgain(GentleStream& st) noexcept;
+    bool streamDecodeTo(GentleStream& st, size_t target, bool mayTakeFromOlder) noexcept;
+    void streamTakeFromOldest(size_t needBytes, size_t needReserve, const GentleStream& forStream) noexcept;
+    void streamFreeRetired() noexcept;
+    void streamFree(GentleStream& st, bool readersMayExist) noexcept;
+    bool streamEvictIdle(size_t needBytes, const GentleStream* keep, size_t needReserve = 0) noexcept;
+    void stopAllStreams() noexcept;
+    std::atomic<unsigned> renderEpoch { 0 };   // odd while a render block runs
+    std::mutex streamMutex;                    // the streams and the requests
+    std::condition_variable streamWake;
+    std::vector<std::unique_ptr<GentleStream>> streams;
+    struct Playing;
+    std::vector<Playing> playingScratch;   // streamer only
+    std::vector<QueuedFileData> streamRequests;
+    bool streamRun { true };
+    std::thread streamThread;
     std::mutex loadingJobsMutex;
     std::vector<std::future<void>> loadingJobs;
     std::thread dispatchThread { &FilePool::dispatchingJob, this };

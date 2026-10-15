@@ -1,0 +1,1370 @@
+diff -ruN a/src/CMakeLists.txt b/src/CMakeLists.txt
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -231,7 +231,9 @@
+ target_link_libraries(sfizz_parser
+     PUBLIC sfizz::filesystem sfizz::simde absl::strings
+     PRIVATE absl::flat_hash_map)
+-sfizz_enable_release_asserts(sfizz_parser)
++if(SFIZZ_RELEASE_ASSERTS)   # [sfizz for MPC OS] was unconditional: a failed check trapped (killed the host)
++    sfizz_enable_release_asserts(sfizz_parser)
++endif()
+ 
+ # OSC messaging library
+ set(SFIZZ_MESSAGING_HEADERS
+@@ -248,7 +250,9 @@
+     ${SFIZZ_MESSAGING_HEADERS} ${SFIZZ_MESSAGING_SOURCES})
+ target_include_directories(sfizz_messaging PUBLIC ".")
+ target_link_libraries(sfizz_messaging PUBLIC absl::strings)
+-sfizz_enable_release_asserts(sfizz_messaging)
++if(SFIZZ_RELEASE_ASSERTS)   # [sfizz for MPC OS] was unconditional: a failed check trapped (killed the host)
++    sfizz_enable_release_asserts(sfizz_messaging)
++endif()
+ 
+ 
+ # Import library
+@@ -300,7 +304,9 @@
+     target_compile_definitions(sfizz_internal PUBLIC "SFIZZ_USE_SNDFILE=1")
+     target_link_libraries(sfizz_internal PUBLIC st_audiofile)
+ endif()
+-sfizz_enable_release_asserts(sfizz_internal)
++if(SFIZZ_RELEASE_ASSERTS)   # [sfizz for MPC OS] was unconditional: a failed check trapped (killed the host)
++    sfizz_enable_release_asserts(sfizz_internal)
++endif()
+ 
+ if(SFIZZ_IMPLEMENT_CXX17_ALIGNED_NEW_SUPPORT)
+     target_compile_definitions(sfizz_internal PRIVATE "SFIZZ_IMPLEMENT_CXX17_ALIGNED_NEW_SUPPORT=1")
+diff -ruN a/src/sfizz/ADSREnvelope.cpp b/src/sfizz/ADSREnvelope.cpp
+--- a/src/sfizz/ADSREnvelope.cpp
++++ b/src/sfizz/ADSREnvelope.cpp
+@@ -5,6 +5,7 @@
+ // If not, contact the sfizz maintainers at https://github.com/sfztools/sfizz
+ 
+ #include "ADSREnvelope.h"
++#include <algorithm>
+ #include "Config.h"
+ #include "SIMDHelpers.h"
+ #include "MathHelpers.h"
+@@ -147,11 +148,15 @@
+                 shouldRelease = true;
+                 break;
+             }
+-            while (count < size) {
+-                if (currentValue > sustain)
+-                    currentValue += transitionDelta;
++            // [sfizz for MPC OS] settled on the sustain level (the usual case for a held note): the rest is constant
++            while (count < size && currentValue > sustain) {
++                currentValue += transitionDelta;
+                 output[count++] = currentValue;
+             }
++            if (count < size) {
++                std::fill(output.begin() + count, output.begin() + size, currentValue);
++                count = size;
++            }
+             break;
+         case State::Release:
+             previousValue = currentValue;
+diff -ruN a/src/sfizz/Buffer.h b/src/sfizz/Buffer.h
+--- a/src/sfizz/Buffer.h
++++ b/src/sfizz/Buffer.h
+@@ -34,6 +34,9 @@
+ #include <algorithm>
+ #include <utility>
+ #include <atomic>
++#if defined(__linux__)
++#include <sys/mman.h>
++#endif
+ 
+ #ifdef DEBUG
+ #include <iostream>
+@@ -161,9 +164,11 @@
+         Type* oldData = paddedData.get();
+         Type* oldNormalData = normalData;
+         std::size_t oldSize = alignedSize;
++        const std::size_t oldMapped = paddedData.get_deleter().mapped;
+ 
+         std::size_t tempSize = newSize + 2 * AlignmentMask; // To ensure that we have leeway at the beginning and at the end
+-        Type* newData = reinterpret_cast<Type*>(std::calloc(tempSize, sizeof(value_type)));
++        std::size_t newMapped = 0;
++        Type* newData = reinterpret_cast<Type*>(rawAllocate(tempSize * sizeof(value_type), newMapped));
+         if (newData == nullptr) {
+             return false;
+         }
+@@ -177,6 +182,7 @@
+         alignedSize = newSize;
+         paddedData.release(); // realloc has invalidated the old pointer
+         paddedData.reset(static_cast<pointer>(newData));
++        paddedData.get_deleter().mapped = newMapped;
+         normalData = static_cast<pointer>(align(Alignment, alignedSize, newData, tempSize));
+         normalEnd = normalData + alignedSize;
+         std::size_t endMisalignment = (alignedSize & TypeAlignmentMask);
+@@ -185,8 +191,9 @@
+         else
+             _alignedEnd = normalEnd;
+ 
+-        std::memcpy(normalData, oldNormalData, std::min(newSize, oldSize) * sizeof(Type));
+-        std::free(oldData);
++        if (oldNormalData != nullptr && oldSize > 0)
++            std::memcpy(normalData, oldNormalData, std::min(newSize, oldSize) * sizeof(Type));
++        rawFree(oldData, oldMapped);
+ 
+         return true;
+     }
+@@ -303,6 +310,7 @@
+         largerSize = 0;
+         alignedSize = 0;
+         paddedData.reset();
++        paddedData.get_deleter().mapped = 0;
+         normalData = nullptr;
+         normalEnd = nullptr;
+         _alignedEnd = nullptr;
+@@ -326,8 +334,41 @@
+         return reinterpret_cast<void *>(aligned);
+     }
+ 
++    // [sfizz for MPC OS] large buffers (decoded sample files) are mapped directly. From the heap, glibc's calloc would
++    // clear every page of a freshly reused block (CPU, and the whole file's memory committed at once), and freed
++    // blocks stay in the process: memory then only grows as files stream in and out. A mapping is zeroed lazily
++    // by the kernel and handed back whole on free.
++    static constexpr std::size_t kMapThreshold { std::size_t(256) << 10 };
++    static void* rawAllocate(std::size_t bytes, std::size_t& mapped) noexcept
++    {
++        mapped = 0;
++#if defined(__linux__)
++        if (bytes >= kMapThreshold) {
++            void* p = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
++            if (p == MAP_FAILED)
++                return nullptr;
++            mapped = bytes;
++            return p;
++        }
++#endif
++        return std::calloc(bytes, 1);
++    }
++    static void rawFree(void* p, std::size_t mapped) noexcept
++    {
++        if (p == nullptr)
++            return;
++#if defined(__linux__)
++        if (mapped > 0) {
++            ::munmap(p, mapped);
++            return;
++        }
++#endif
++        std::free(p);
++    }
++
+     struct deleter {
+-        void operator()(void *p) const noexcept { std::free(p); }
++        std::size_t mapped { 0 };
++        void operator()(void *p) const noexcept { rawFree(p, mapped); }
+     };
+ 
+     size_type largerSize { 0 };
+diff -ruN a/src/sfizz/FilePool.cpp b/src/sfizz/FilePool.cpp
+--- a/src/sfizz/FilePool.cpp
++++ b/src/sfizz/FilePool.cpp
+@@ -39,6 +39,10 @@
+ #include <memory>
+ #include <thread>
+ #include <system_error>
++#include <atomic>
++#include <chrono>
++#include <algorithm>
++#include <new>
+ #if defined(_WIN32)
+ #include <windows.h>
+ #else
+@@ -46,6 +50,26 @@
+ #endif
+ using namespace std::placeholders;
+ 
++// [sfizz for MPC OS] bounded streaming settings and counters (see the end of the file)
++namespace {
++std::atomic<bool> gGentleLoading { false };
++std::atomic<size_t> gStreamBytes { 0 };                    // decoded sample memory in use, all file pools
++std::atomic<size_t> gStreamBudget { size_t(192) << 20 };   // set by the host from the device's free memory
++std::atomic<unsigned> gStreamCount { 0 };
++std::atomic<size_t> gReserved { 0 };                       // address space reserved by streams (whole decoded files)
++// address space for whole decoded files: plenty for idle files to stay cached, well inside a 32-bit process
++size_t reserveLimit() { return std::min<size_t>(std::max<size_t>(gStreamBudget.load() * 3, size_t(256) << 20), size_t(768) << 20); }
++std::atomic<unsigned> gStarved { 0 };                      // decode steps refused by the budget
++std::atomic<unsigned> gFailed { 0 };                       // allocations that failed
++std::atomic<unsigned> gTaken { 0 };                        // playing files freed for newer ones (memory short)
++std::atomic<unsigned> gUnderruns { 0 };                    // notes cut because their data wasn't decoded in time
++constexpr double kUrgentSeconds = 0.35;   // first pass: every playing file this far ahead of its furthest reader
++constexpr double kAheadSeconds = 1.25;    // second pass: this far ahead
++constexpr int kTickMs = 8;                // the streamer's round
++constexpr int kWaitMs = 150;              // a new file waits this long for memory (its preloaded start plays meanwhile)
++constexpr int kIdleSeconds = sfz::config::fileClearingPeriod;   // an unused file's memory is kept this long
++}
++
+ static std::weak_ptr<ThreadPool> globalThreadPoolWeakPtr;
+ static std::mutex globalThreadPoolMutex;
+ 
+@@ -70,7 +94,7 @@
+ }
+ 
+ void readBaseFile(sfz::AudioReader& reader, sfz::FileAudioBuffer& output, uint32_t numFrames)
+-{
++try {
+     output.reset();
+     output.resize(numFrames);
+ 
+@@ -88,6 +112,8 @@
+         reader.readNextBlock(tempReadBuffer.data(), numFrames);
+         sfz::readInterleaved(tempReadBuffer, output.getSpan(0), output.getSpan(1));
+     }
++} catch (const std::bad_alloc&) {   // [sfizz for MPC OS] out of memory: an empty buffer (a silent note), not an abort
++    output.reset();
+ }
+ 
+ sfz::FileAudioBuffer readFromFile(sfz::AudioReader& reader, uint32_t numFrames)
+@@ -144,6 +170,7 @@
+     : filesToLoad(alignedNew<FileQueue>()),
+       threadPool(globalThreadPool())
+ {
++    streamThread = std::thread(&FilePool::streamerJob, this);   // [sfizz for MPC OS]
+     loadingJobs.reserve(config::maxVoices);
+     lastUsedFiles.reserve(config::maxVoices);
+     garbageToCollect.reserve(config::maxVoices);
+@@ -153,6 +180,14 @@
+ {
+     std::error_code ec;
+ 
++    {   // [sfizz for MPC OS]
++        std::lock_guard<std::mutex> lock { streamMutex };
++        streamRun = false;
++    }
++    streamWake.notify_all();
++    if (streamThread.joinable())
++        streamThread.join();
++
+     garbageFlag = false;
+     semGarbageBarrier.post(ec);
+     garbageThread.join();
+@@ -362,6 +397,7 @@
+ 
+ void sfz::FilePool::removeUnusedPreloadedData() noexcept
+ {
++    waitForBackgroundLoading();   // [sfizz for MPC OS] entries are erased below
+     for (auto it = preloadedFiles.begin(), end = preloadedFiles.end(); it != end; ) {
+         auto copyIt = it++;
+         if (copyIt->second.preloadCallCount == 0) {
+@@ -452,6 +488,7 @@
+ 
+ void sfz::FilePool::setPreloadSize(uint32_t preloadSize) noexcept
+ {
++    waitForBackgroundLoading();   // [sfizz for MPC OS] the preloads are rewritten below
+     this->preloadSize = preloadSize;
+     if (loadInRam)
+         return;
+@@ -467,6 +504,20 @@
+ 
+ void sfz::FilePool::loadingJob(const QueuedFileData& data) noexcept
+ {
++    if (gGentleLoading.load()) {   // [sfizz for MPC OS] claim the file, then let the streamer do the work
++        if (data.id.expired())
++            return;
++        auto expected = FileData::Status::Preloaded;
++        if (!data.data->status.compare_exchange_strong(expected, FileData::Status::Streaming))
++            return;   // already streaming, done, or not ready
++        {
++            std::lock_guard<std::mutex> lock { streamMutex };
++            streamRequests.push_back(data);
++        }
++        streamWake.notify_one();
++        return;
++    }
++
+     raiseCurrentThreadPriority();
+ 
+     std::shared_ptr<FileId> id = data.id.lock();
+@@ -569,12 +620,20 @@
+ 
+ void sfz::FilePool::waitForBackgroundLoading() noexcept
+ {
+-    std::lock_guard<std::mutex> guard { loadingJobsMutex };
++    {
++        std::lock_guard<std::mutex> guard { loadingJobsMutex };
+ 
+-    for (auto& job : loadingJobs)
+-        job.wait();
++        for (auto& job : loadingJobs)
++            job.wait();
++
++        loadingJobs.clear();
++    }
++    stopAllStreams();   // [sfizz for MPC OS] files are about to be cleared or moved: no stream may outlive this
++}
+ 
+-    loadingJobs.clear();
++void sfz::FilePool::emptyFileLoadingQueues() noexcept   // [sfizz for MPC OS] was a no-op
++{
++    waitForBackgroundLoading();
+ }
+ 
+ void sfz::FilePool::raiseCurrentThreadPriority() noexcept
+@@ -671,3 +730,370 @@
+     semGarbageBarrier.post(ec);
+     ASSERT(!ec);
+ }
++
++
++// =====================================================================================================================
++// [sfizz for MPC OS] Bounded streaming
++// =====================================================================================================================
++
++struct sfz::FilePool::GentleStream {
++    std::weak_ptr<FileId> id;
++    FileData* data { nullptr };
++    AudioReaderPtr reader;
++    size_t numFrames { 0 };
++    unsigned numChannels { 0 };
++    size_t out { 0 };          // frames decoded into data->fileData
++    double rate { 48000.0 };
++    size_t bytes { 0 };        // charged to the budget
++    size_t reserved { 0 };     // address space held (the whole decoded file)
++    bool idle { false };
++    std::chrono::steady_clock::time_point idleSince;
++    std::chrono::steady_clock::time_point began;   // when its data started: the oldest playing file yields first
++    bool retiring { false };                       // its voices are fading out; freed once they have
++    bool waiting { false };                        // requested, its memory not reserved yet
++    std::chrono::steady_clock::time_point requestedAt;
++    std::chrono::steady_clock::time_point retiredAt;
++    sfz::Buffer<float> block;
++};
++
++void sfz::FilePool::setGentleLoading(bool gentle) noexcept { gGentleLoading = gentle; }
++void sfz::FilePool::setStreamBudget(size_t bytes) noexcept { gStreamBudget = bytes; }
++void sfz::FilePool::noteUnderrun() noexcept { gUnderruns++; }
++sfz::FilePool::StreamStats sfz::FilePool::streamStats() noexcept
++{
++    return { gStreamBytes.load(), gStreamBudget.load(), gStreamCount.load(), gStarved.load(), gFailed.load() };
++}
++
++// Open the file (once) and reserve the whole decoded size. The pages are only committed as frames are written (the
++// buffer is a fresh mapping), so memory follows what was decoded, not the file's length. `Wait`: the address space
++// for it isn't free yet (older files are being retired to make room); try again on the next tick.
++sfz::FilePool::BeginResult sfz::FilePool::streamBegin(GentleStream& st) noexcept
++{
++    std::shared_ptr<FileId> id = st.id.lock();
++    if (!id)
++        return BeginResult::Failed;
++    try {
++        if (!st.reader) {
++            std::error_code ec;
++            st.reader = createAudioReader(rootDirectory / id->filename(), id->isReverse(), &ec);
++            if (ec || !st.reader)
++                return BeginResult::Failed;
++            st.numFrames = static_cast<size_t>(st.reader->frames());
++            st.numChannels = st.reader->channels();
++            st.rate = st.reader->sampleRate() > 0 ? st.reader->sampleRate() : 48000.0;
++            if (st.numChannels < 1 || st.numChannels > 2 || st.numFrames == 0)
++                return BeginResult::Failed;
++            if (!st.block.resize(static_cast<size_t>(config::fileChunkSize) * st.numChannels, std::nothrow))
++                return BeginResult::Failed;
++        }
++        const size_t reserve = st.numFrames * st.numChannels * sizeof(float);
++        if (gReserved.load() + reserve > reserveLimit() && !streamEvictIdle(0, &st, reserve)) {
++            streamTakeFromOldest(0, reserve, st);   // too many files open for a 32-bit process: retire the oldest
++            gStarved++;
++            return BeginResult::Wait;
++        }
++        FileAudioBuffer& fd = st.data->fileData;
++        fd.reset();
++        fd.addChannels(st.numChannels);
++        if (!fd.resize(st.numFrames, std::nothrow)) {
++            fd.reset();
++            gFailed++;
++            return BeginResult::Failed;
++        }
++        st.reserved = reserve;
++        gReserved += reserve;
++    } catch (const std::exception&) {   // bad_alloc and the like: never let it reach the host
++        st.data->fileData.reset();
++        gFailed++;
++        return BeginResult::Failed;
++    }
++    st.out = 0;
++    st.bytes = 0;
++    st.idle = false;
++    st.waiting = false;
++    st.retiring = false;
++    st.began = std::chrono::steady_clock::now();
++    st.data->availableFrames = 0;
++    return BeginResult::Ok;
++}
++
++// After freeing a file that voices still read (a note started on it meanwhile): stream it again. Returns false when
++// the stream object is done with (its file plays its preloaded start; a later note can stream it again).
++bool sfz::FilePool::streamClaimAgain(GentleStream& st) noexcept
++{
++    if (st.data->readerCount.load() > 0) {
++        auto expected = FileData::Status::Preloaded;
++        if (st.data->status.compare_exchange_strong(expected, FileData::Status::Streaming)) {
++            st.reader.reset();   // reopen: decoding starts over from the file's start
++            const BeginResult r = streamBegin(st);
++            if (r == BeginResult::Ok)
++                return true;
++            if (r == BeginResult::Wait) {
++                st.waiting = true;
++                st.requestedAt = std::chrono::steady_clock::now();
++                st.began = st.requestedAt;
++                return true;
++            }
++            st.data->fileData.reset();
++            st.data->availableFrames = 0;
++            st.data->status = FileData::Status::Preloaded;
++        }
++    }
++    return false;
++}
++
++// Decode up to `target` frames, within the budget. Returns false when the budget stopped it. With `mayTakeFromOlder`,
++// a file that needs memory to keep playing takes it from the file that has been playing longest, as voice stealing
++// would: when memory runs short, the oldest notes end (quickly faded) and new notes still sound in full.
++bool sfz::FilePool::streamDecodeTo(GentleStream& st, size_t target, bool mayTakeFromOlder) noexcept
++{
++    target = std::min(target, st.numFrames);
++    const size_t chunk = static_cast<size_t>(config::fileChunkSize);
++    while (st.out < target) {
++        const size_t want = std::min(chunk, st.numFrames - st.out);
++        const size_t cost = want * st.numChannels * sizeof(float);
++        if (gStreamBytes.load() + cost > gStreamBudget.load() && !streamEvictIdle(cost, &st)
++) {
++            if (mayTakeFromOlder)
++                streamTakeFromOldest(cost, 0, st);
++            gStarved++;
++            return false;
++        }
++        const size_t got = static_cast<size_t>(st.reader->readNextBlock(st.block.data(), want));
++        if (got == 0) {          // shorter than announced: end here
++            st.numFrames = st.out;
++            break;
++        }
++        FileAudioBuffer& fd = st.data->fileData;
++        for (unsigned c = 0; c < st.numChannels; ++c) {
++            float* dst = fd.getSpan(c).data() + st.out;
++            for (size_t i = 0; i < got; ++i)
++                dst[i] = st.block[i * st.numChannels + c];
++        }
++        const size_t gotBytes = got * st.numChannels * sizeof(float);
++        st.bytes += gotBytes;
++        gStreamBytes += gotBytes;
++        st.out += got;
++        st.data->availableFrames.store(st.out);   // publish after the frames are written
++    }
++    if (st.out >= st.numFrames)
++        st.data->status = FileData::Status::Done;
++    return true;
++}
++
++// Give a file's decoded memory back. Voices then read the preloaded start again (as upstream's garbage collector
++// leaves an idle file). If a render block may be reading the data right now, wait until it has finished.
++void sfz::FilePool::streamFree(GentleStream& st, bool readersMayExist) noexcept
++{
++    FileData& fd = *st.data;
++    fd.availableFrames.store(0);
++    if (readersMayExist) {
++        const unsigned epoch = renderEpoch.load();
++        if (epoch & 1) {
++            for (int i = 0; i < 2000 && renderEpoch.load() == epoch; ++i)   // at most ~2 s; one block takes ~3 ms
++                std::this_thread::sleep_for(std::chrono::milliseconds(1));
++        }
++    }
++    fd.fileData.reset();
++    gStreamBytes -= st.bytes;
++    gReserved -= st.reserved;
++    st.bytes = 0;
++    st.reserved = 0;
++    st.out = 0;
++    st.reader.reset();
++    fd.readHead = 0;
++    fd.status = FileData::Status::Preloaded;
++}
++
++// Free idle files, the longest idle first, until `needBytes` more fit in the budget.
++bool sfz::FilePool::streamEvictIdle(size_t needBytes, const GentleStream* keep, size_t needReserve) noexcept
++{
++    for (;;) {
++        if (gStreamBytes.load() + needBytes <= gStreamBudget.load() && gReserved.load() + needReserve <= reserveLimit())
++            return true;
++        GentleStream* oldest = nullptr;
++        for (auto& s : streams)
++            if (s.get() != keep && s->data && s->idle && !s->waiting && s->reserved > 0 && s->data->readerCount.load() == 0
++                && (!oldest || s->idleSince < oldest->idleSince))
++                oldest = s.get();
++        if (!oldest)
++            return false;
++        streamFree(*oldest, true);
++        if (!streamClaimAgain(*oldest))
++            oldest->data = nullptr;   // removed at the end of the tick
++    }
++}
++
++struct sfz::FilePool::Playing {
++    GentleStream* st;
++    size_t head;      // frames: the furthest reader, at least the preloaded start
++    double margin;    // decoded frames ahead of it (negative: behind)
++};
++
++// Make room by retiring the files that have played longest (and began before `forStream`): their voices fade out over
++// a few milliseconds, then the next ticks free them, so this always leaves the caller waiting a little (its lookahead,
++// or for a new file its preloaded start, covers the wait).
++void sfz::FilePool::streamTakeFromOldest(size_t needBytes, size_t needReserve, const GentleStream& forStream) noexcept
++{
++    size_t retiringBytes = 0, retiringReserve = 0;
++    for (auto& s : streams)
++        if (s->data && s->retiring) {
++            retiringBytes += s->bytes;
++            retiringReserve += s->reserved;
++        }
++    const auto short_ = [&] {
++        const size_t bytes = gStreamBytes.load(), reserved = gReserved.load();
++        return bytes - std::min(retiringBytes, bytes) + needBytes > gStreamBudget.load()
++            || reserved - std::min(retiringReserve, reserved) + needReserve > reserveLimit();
++    };
++    while (short_()) {
++        GentleStream* oldest = nullptr;
++        for (auto& s : streams)
++            if (s.get() != &forStream && s->data && !s->retiring && !s->waiting && s->reserved > 0
++                && s->began < forStream.began && (!oldest || s->began < oldest->began))
++                oldest = s.get();
++        if (!oldest)
++            return;
++        oldest->retiring = true;
++        oldest->retiredAt = std::chrono::steady_clock::now();
++        oldest->data->retireEpoch.fetch_add(1);
++        retiringBytes += oldest->bytes;
++        retiringReserve += oldest->reserved;
++        gTaken++;
++    }
++}
++
++// Free retiring files whose voices have faded (or after a short grace). Their files stream again on a new note.
++void sfz::FilePool::streamFreeRetired() noexcept
++{
++    const auto now = std::chrono::steady_clock::now();
++    for (auto& s : streams) {
++        if (!s->data || !s->retiring)
++            continue;
++        if (s->data->readerCount.load() > 0 && now - s->retiredAt < std::chrono::milliseconds(80))
++            continue;
++        streamFree(*s, true);
++        s->retiring = false;
++        if (!streamClaimAgain(*s))   // a note that started on it meanwhile keeps it streaming
++            s->data = nullptr;       // removed at the end of the tick
++    }
++}
++
++void sfz::FilePool::streamerTick() noexcept
++{
++    streamFreeRetired();
++
++    // new files wait in `streams` until they have their memory
++    const auto now = std::chrono::steady_clock::now();
++    for (auto& request : streamRequests) {
++        auto st = absl::make_unique<GentleStream>();
++        st->id = request.id;
++        st->data = request.data;
++        st->waiting = true;
++        st->requestedAt = now;
++        st->began = now;   // the newest: older files retire for it, not the other way round
++        streams.push_back(std::move(st));
++    }
++    streamRequests.clear();
++
++    for (auto& st : streams) {
++        if (!st->data)
++            continue;
++        if (st->id.expired()) {   // its region is gone (the instrument changed)
++            st->data = nullptr;
++            continue;
++        }
++        if (st->waiting) {
++            const bool gaveUp = st->data->readerCount.load() == 0 || now - st->requestedAt > std::chrono::milliseconds(kWaitMs);
++            const BeginResult r = gaveUp ? BeginResult::Failed : streamBegin(*st);
++            if (r == BeginResult::Ok || r == BeginResult::Wait)
++                continue;
++            st->reader.reset();
++            st->data->fileData.reset();
++            st->data->availableFrames = 0;
++            st->data->status = FileData::Status::Preloaded;   // its notes play their preloaded start
++            st->data = nullptr;
++            continue;
++        }
++        if (st->retiring)
++            continue;
++        const bool readers = st->data->readerCount.load() > 0;
++        if (readers)
++            st->idle = false;
++        else if (!st->idle) {
++            st->idle = true;
++            st->idleSince = now;
++        } else if (now - st->idleSince > std::chrono::seconds(kIdleSeconds)) {
++            streamFree(*st, true);
++            if (!streamClaimAgain(*st))
++                st->data = nullptr;
++        }
++    }
++
++    // two passes: everyone a little ahead first, the most starved first; then the full lookahead.
++    // Each stream's read position is read once: voices move it while this runs, and sorting on live values would
++    // give std::sort an inconsistent order (it then reads past the array's ends).
++    std::vector<Playing>& playing = playingScratch;
++    playing.clear();
++    for (auto& st : streams)
++        if (st->data && !st->idle && !st->retiring && !st->waiting && st->out < st->numFrames) {
++            const size_t head = std::max<size_t>(st->data->readHead.load(), st->data->preloadedData.getNumFrames());
++            playing.push_back({ st.get(), head, double(st->out) - double(head) });
++        }
++    std::sort(playing.begin(), playing.end(), [](const Playing& a, const Playing& b) { return a.margin < b.margin; });
++    for (auto& p : playing)   // (a file freed to make room for another has data == nullptr from then on)
++        if (p.st->data)
++            streamDecodeTo(*p.st, p.head + static_cast<size_t>(kUrgentSeconds * p.st->rate), true);
++    for (auto& p : playing)
++        if (p.st->data)
++            streamDecodeTo(*p.st, p.head + static_cast<size_t>(kAheadSeconds * p.st->rate), false);
++
++    streams.erase(std::remove_if(streams.begin(), streams.end(),
++                                 [](const std::unique_ptr<GentleStream>& s) { return s->data == nullptr; }),
++                  streams.end());
++}
++
++void sfz::FilePool::streamerJob() noexcept
++{
++    // A normal thread, as upstream's loaders: a real-time one would run ahead of the MPC's own non-real-time work
++    // (its disk streaming, the screen) for as long as a burst of decoding lasts. Real-time audio threads are ahead of
++    // it either way, and the lookahead (over a second) absorbs scheduling delays.
++    std::unique_lock<std::mutex> lock { streamMutex };
++    while (streamRun) {
++        streamWake.wait_for(lock, std::chrono::milliseconds(kTickMs));
++        if (!streamRun)
++            break;
++        streamerTick();
++        gStreamCount = static_cast<unsigned>(streams.size());
++    }
++}
++
++// Called while nothing renders (loading, clearing, preload changes): drop every stream and reset its file.
++void sfz::FilePool::stopAllStreams() noexcept
++{
++    std::lock_guard<std::mutex> lock { streamMutex };
++    for (auto& st : streams)
++        if (st->data && !st->id.expired())
++            streamFree(*st, false);
++        else if (st->data) {   // its file is gone: only the accounting is left
++            gStreamBytes -= st->bytes;
++            gReserved -= st->reserved;
++        }
++    streams.clear();
++    for (auto& request : streamRequests)
++        if (!request.id.expired())
++            request.data->status = FileData::Status::Preloaded;
++    streamRequests.clear();
++}
++
++// C hooks for the engine adapter (src/sfizz_mpc.cpp)
++extern "C" void sfizz_mpc_set_gentle_loading(int gentle) { sfz::FilePool::setGentleLoading(gentle != 0); }
++extern "C" void sfizz_mpc_set_stream_budget(unsigned long long bytes) { sfz::FilePool::setStreamBudget(static_cast<size_t>(bytes)); }
++extern "C" void sfizz_mpc_stream_stats(unsigned long long* bytes, unsigned long long* budget, unsigned* streams,
++                                       unsigned* starved, unsigned* failed)
++{
++    const auto s = sfz::FilePool::streamStats();
++    *bytes = s.bytes; *budget = s.budget; *streams = s.streams; *starved = s.starved; *failed = s.failed;
++}
++extern "C" unsigned sfizz_mpc_underruns() { return gUnderruns.load(); }
++extern "C" unsigned sfizz_mpc_streams_taken() { return gTaken.load(); }
+diff -ruN a/src/sfizz/FilePool.h b/src/sfizz/FilePool.h
+--- a/src/sfizz/FilePool.h
++++ b/src/sfizz/FilePool.h
+@@ -45,6 +45,9 @@
+ #include <thread>
+ #include <future>
+ #include <memory>
++#include <mutex>
++#include <condition_variable>
++#include <vector>
+ class ThreadPool;
+ 
+ namespace sfz {
+@@ -94,6 +97,7 @@
+         availableFrames = other.availableFrames.load();
+         lastViewerLeftAt = other.lastViewerLeftAt;
+         status = other.status.load();
++        readHead = other.readHead.load();
+     }
+     FileData& operator=(FileData&& other)
+     {
+@@ -105,6 +109,7 @@
+         availableFrames = other.availableFrames.load();
+         lastViewerLeftAt = other.lastViewerLeftAt;
+         status = other.status.load();
++        readHead = other.readHead.load();
+         return *this;
+     }
+ 
+@@ -116,6 +121,16 @@
+     std::atomic<size_t> availableFrames { 0 };
+     std::atomic<int> readerCount { 0 };
+     std::chrono::time_point<std::chrono::high_resolution_clock> lastViewerLeftAt;
++    // [sfizz for MPC OS] the furthest frame any voice has asked for; the streamer keeps a little ahead of it
++    std::atomic<size_t> readHead { 0 };
++    // [sfizz for MPC OS] bumped when memory runs short and this file's data must go: the voices that started before
++    // fade out quickly first (voices that start afterwards are not affected)
++    std::atomic<unsigned> retireEpoch { 0 };
++    void noteRead(size_t frame) noexcept
++    {
++        size_t current = readHead.load(std::memory_order_relaxed);
++        while (frame > current && !readHead.compare_exchange_weak(current, frame, std::memory_order_relaxed)) {}
++    }
+ 
+     LEAK_DETECTOR(FileData);
+ };
+@@ -308,11 +323,7 @@
+      * method on the audio thread as it will spinlock.
+      *
+      */
+-    void emptyFileLoadingQueues() noexcept
+-    {
+-        // nothing to do in this implementation,
+-        // deleting the region and its sample ID take care of it
+-    }
++    void emptyFileLoadingQueues() noexcept;   // [sfizz for MPC OS] also stops the streams (was a no-op)
+     /**
+      * @brief Wait for the background loading to finish for all promises
+      * in the queue.
+@@ -323,6 +334,21 @@
+      * for background sample file processing.
+      */
+     static void raiseCurrentThreadPriority() noexcept;
++
++    // ---- [sfizz for MPC OS] bounded streaming, for small devices (Gen1 MPC, RK3288, 32-bit) ----
++    // Upstream decodes the whole rest of a sample file on every note-on, at once, on a real-time thread, and keeps it
++    // in memory: on a 2 GB device fast playing exhausted memory (MPC was killed) and every key hit spiked the CPU. With
++    // gentle streaming one low-priority thread per file pool decodes each playing file only a little ahead of the
++    // furthest voice reading it, within a memory budget shared by every instance; idle files stay cached until the
++    // budget needs their memory (oldest first) or they have been idle for a while. The audio is unchanged.
++    static void setGentleLoading(bool gentle) noexcept;
++    static void noteUnderrun() noexcept;
++    static void setStreamBudget(size_t bytes) noexcept;   // decoded sample memory, all instances together
++    struct StreamStats { size_t bytes; size_t budget; unsigned streams; unsigned starved; unsigned failed; };
++    static StreamStats streamStats() noexcept;
++    // Bracket every render block, so memory is never freed while a block may still read it.
++    void renderBlockBegin() noexcept { renderEpoch.fetch_add(1); }
++    void renderBlockEnd() noexcept { renderEpoch.fetch_add(1); }
+     /**
+      * @brief Change whether all samples are loaded in ram.
+      * This will trigger a purge and reloading.
+@@ -345,8 +371,8 @@
+     uint32_t preloadSize { config::preloadSize };
+ 
+     // Signals
+-    volatile bool dispatchFlag { true };
+-    volatile bool garbageFlag { true };
++    std::atomic<bool> dispatchFlag { true };
++    std::atomic<bool> garbageFlag { true };
+     RTSemaphore dispatchBarrier;
+     RTSemaphore semGarbageBarrier;
+ 
+@@ -366,6 +392,29 @@
+     void dispatchingJob() noexcept;
+     void garbageJob() noexcept;
+     void loadingJob(const QueuedFileData& data) noexcept;
++
++    // [sfizz for MPC OS] bounded streaming (see setGentleLoading)
++    struct GentleStream;
++    void streamerJob() noexcept;
++    void streamerTick() noexcept;
++    enum class BeginResult { Ok, Wait, Failed };
++    BeginResult streamBegin(GentleStream& st) noexcept;
++    bool streamClaimAgain(GentleStream& st) noexcept;
++    bool streamDecodeTo(GentleStream& st, size_t target, bool mayTakeFromOlder) noexcept;
++    void streamTakeFromOldest(size_t needBytes, size_t needReserve, const GentleStream& forStream) noexcept;
++    void streamFreeRetired() noexcept;
++    void streamFree(GentleStream& st, bool readersMayExist) noexcept;
++    bool streamEvictIdle(size_t needBytes, const GentleStream* keep, size_t needReserve = 0) noexcept;
++    void stopAllStreams() noexcept;
++    std::atomic<unsigned> renderEpoch { 0 };   // odd while a render block runs
++    std::mutex streamMutex;                    // the streams and the requests
++    std::condition_variable streamWake;
++    std::vector<std::unique_ptr<GentleStream>> streams;
++    struct Playing;
++    std::vector<Playing> playingScratch;   // streamer only
++    std::vector<QueuedFileData> streamRequests;
++    bool streamRun { true };
++    std::thread streamThread;
+     std::mutex loadingJobsMutex;
+     std::vector<std::future<void>> loadingJobs;
+     std::thread dispatchThread { &FilePool::dispatchingJob, this };
+diff -ruN a/src/sfizz/Interpolators.cpp b/src/sfizz/Interpolators.cpp
+--- a/src/sfizz/Interpolators.cpp
++++ b/src/sfizz/Interpolators.cpp
+@@ -18,6 +18,26 @@
+     SincInterpolatorTraits<48>::initialize();
+     SincInterpolatorTraits<60>::initialize();
+     SincInterpolatorTraits<72>::initialize();
++    sinc8PolyphaseTable();   // [sfizz for MPC OS] built here, never on the audio thread
++}
++
++const float* sinc8PolyphaseTable() noexcept
++{
++    struct Table {
++        alignas(64) float rows[(kSinc8Phases + 2) * 8];
++        Table()
++        {
++            SincInterpolatorTraits<8>::initialize();
++            const float* t = SincInterpolatorTraits<8>::windowedSinc->getTablePointer();
++            for (int k = 0; k <= kSinc8Phases + 1; ++k)
++                for (int tap = 0; tap < 8; ++tap) {
++                    const int index = (tap + 1) * kSinc8Phases - k;   // upstream: (tap + 1 - coeff) * 8191
++                    rows[k * 8 + tap] = index >= 0 ? t[index] : 0.0f;
++                }
++        }
++    };
++    static const Table table;
++    return table.rows;
+ }
+ 
+ } // namespace sfz
+diff -ruN a/src/sfizz/Interpolators.h b/src/sfizz/Interpolators.h
+--- a/src/sfizz/Interpolators.h
++++ b/src/sfizz/Interpolators.h
+@@ -47,6 +47,13 @@
+  */
+ void initializeInterpolators();
+ 
++// [sfizz for MPC OS] The Sinc 8 kernel table, laid out by phase: row k (0..kSinc8Phases) holds the eight taps for a
++// fractional position of k / kSinc8Phases, row-major, 16-byte aligned. It is the same table upstream's Sinc 8 reads
++// (its 8191 entries per unit), only rearranged, so a frame's coefficients come from two adjacent rows (64 bytes),
++// computed once for both channels. Built by initializeInterpolators().
++constexpr int kSinc8Phases = 8191;
++const float* sinc8PolyphaseTable() noexcept;
++
+ /**
+  * @brief Interpolate from a vector of values
+  *
+diff -ruN a/src/sfizz/Panning.cpp b/src/sfizz/Panning.cpp
+--- a/src/sfizz/Panning.cpp
++++ b/src/sfizz/Panning.cpp
+@@ -47,8 +47,115 @@
+     *rightBuffer *= panLookup(1 - p);
+ }
+ 
++// ---- [sfizz for MPC OS] constant-value blocks -------------------------------------------------------------------
++// A pan or width that doesn't move during the block (the usual case) gets its coefficients once instead of per sample.
++// Each sample is still multiplied by exactly the coefficient the per-sample code would have looked up for it (the
++// NEON blocks and the scalar edges use slightly different index rounding, and both are reproduced), with the same
++// arithmetic, so the output is unchanged.
++static bool isConstant(const float* values, unsigned size) noexcept
++{
++    bool varies = false;   // no early exit: the compiler vectorizes it
++    for (unsigned i = 1; i < size; ++i)
++        varies |= values[i] != values[0];
++    return !varies;
++}
++
++#if SFIZZ_HAVE_NEON
++static inline uint32_t neonPanIndex(float value) noexcept   // the NEON blocks' index, one lane
++{
++    float32x4_t v = vdupq_n_f32(value);
++    v = vaddq_f32(v, vdupq_n_f32(1.0f));
++    v = vmulq_n_f32(v, 0.5f * panSize);
++    v = vaddq_f32(v, vdupq_n_f32(0.5f));
++    uint32x4_t idx = vcvtq_u32_f32(v);
++    idx = vminq_u32(idx, vdupq_n_u32(panSize - 1));
++    idx = vmaxq_u32(idx, vdupq_n_u32(0));
++    return vgetq_lane_u32(idx, 0);
++}
++#endif
++
++static void panConstant(float value, float* leftBuffer, float* rightBuffer, unsigned size, const float* envelope) noexcept
++{
++    float* const end = leftBuffer + size;
++    float p = (value + 1.0f) * 0.5f;
++    p = clamp(p, 0.0f, 1.0f);
++    const float scalarLeft = panLookup(p);
++    const float scalarRight = panLookup(1 - p);
++#if SFIZZ_HAVE_NEON
++    const auto* firstAligned = prevAligned<ByteAlignment>(envelope + TypeAlignment - 1);
++    const auto* sentinel = envelope + size;
++    if (willAlign<ByteAlignment>(envelope, leftBuffer, rightBuffer) && (firstAligned < sentinel)) {
++        while (envelope < firstAligned) {
++            *leftBuffer *= scalarLeft;
++            *rightBuffer *= scalarRight;
++            incrementAll(envelope, leftBuffer, rightBuffer);
++        }
++        const uint32_t idx = neonPanIndex(value);
++        const float32x4_t mmLeft = vdupq_n_f32(panData[idx]);
++        const float32x4_t mmRight = vdupq_n_f32(panData[panSize - idx - 1]);
++        const auto* lastAligned = prevAligned<ByteAlignment>(sentinel);
++        while (envelope < lastAligned) {
++            vst1q_f32(leftBuffer, vmulq_f32(vld1q_f32(leftBuffer), mmLeft));
++            vst1q_f32(rightBuffer, vmulq_f32(vld1q_f32(rightBuffer), mmRight));
++            incrementAll<TypeAlignment>(envelope, leftBuffer, rightBuffer);
++        }
++    }
++#else
++    (void)envelope;
++#endif
++    while (leftBuffer < end) {
++        *leftBuffer++ *= scalarLeft;
++        *rightBuffer++ *= scalarRight;
++    }
++}
++
++static void widthConstant(float value, float* leftBuffer, float* rightBuffer, unsigned size, const float* envelope) noexcept
++{
++    float* const end = leftBuffer + size;
++    float w = (value + 1.0f) * 0.5f;
++    w = clamp(w, 0.0f, 1.0f);
++    const auto coeff1 = panLookup(w);
++    const auto coeff2 = panLookup(1 - w);
++#if SFIZZ_HAVE_NEON
++    const auto* firstAligned = prevAligned<ByteAlignment>(envelope + TypeAlignment - 1);
++    const auto* sentinel = envelope + size;
++    if (willAlign<ByteAlignment>(envelope, leftBuffer, rightBuffer) && firstAligned < sentinel) {
++        while (envelope < firstAligned) {
++            const auto l = *leftBuffer;
++            const auto r = *rightBuffer;
++            *leftBuffer = l * coeff2 + r * coeff1;
++            *rightBuffer = l * coeff1 + r * coeff2;
++            incrementAll(envelope, leftBuffer, rightBuffer);
++        }
++        const uint32_t idx = neonPanIndex(value);
++        const float32x4_t mmCoeff1 = vdupq_n_f32(panData[idx]);
++        const float32x4_t mmCoeff2 = vdupq_n_f32(panData[panSize - idx - 1]);
++        const auto* lastAligned = prevAligned<ByteAlignment>(sentinel);
++        while (envelope < lastAligned) {
++            float32x4_t mmLeft = vld1q_f32(leftBuffer);
++            float32x4_t mmRight = vld1q_f32(rightBuffer);
++            vst1q_f32(leftBuffer, vaddq_f32(vmulq_f32(mmCoeff2, mmLeft), vmulq_f32(mmCoeff1, mmRight)));
++            vst1q_f32(rightBuffer, vaddq_f32(vmulq_f32(mmCoeff1, mmLeft), vmulq_f32(mmCoeff2, mmRight)));
++            incrementAll<TypeAlignment>(envelope, leftBuffer, rightBuffer);
++        }
++    }
++#else
++    (void)envelope;
++#endif
++    while (leftBuffer < end) {
++        const auto l = *leftBuffer;
++        const auto r = *rightBuffer;
++        *leftBuffer++ = l * coeff2 + r * coeff1;
++        *rightBuffer++ = l * coeff1 + r * coeff2;
++    }
++}
++
+ void pan(const float* panEnvelope, float* leftBuffer, float* rightBuffer, unsigned size) noexcept
+ {
++    if (size > 0 && isConstant(panEnvelope, size)) {   // [sfizz for MPC OS]
++        panConstant(panEnvelope[0], leftBuffer, rightBuffer, size, panEnvelope);
++        return;
++    }
+     const auto* sentinel = panEnvelope + size;
+ 
+ #if SFIZZ_HAVE_NEON
+@@ -112,6 +219,10 @@
+ 
+ void width(const float* widthEnvelope, float* leftBuffer, float* rightBuffer, unsigned size) noexcept
+ {
++    if (size > 0 && isConstant(widthEnvelope, size)) {   // [sfizz for MPC OS]
++        widthConstant(widthEnvelope[0], leftBuffer, rightBuffer, size, widthEnvelope);
++        return;
++    }
+     const auto* sentinel = widthEnvelope + size;
+ 
+ #if SFIZZ_HAVE_NEON
+diff -ruN a/src/sfizz/SIMDHelpers.cpp b/src/sfizz/SIMDHelpers.cpp
+--- a/src/sfizz/SIMDHelpers.cpp
++++ b/src/sfizz/SIMDHelpers.cpp
+@@ -9,6 +9,7 @@
+ #include "utility/Debug.h"
+ #include "simd/HelpersSSE.h"
+ #include "simd/HelpersAVX.h"
++#include "simd/HelpersNEON.h"   // [sfizz for MPC OS]
+ #include "cpuid/cpuinfo.hpp"
+ #include <array>
+ #include <mutex>
+@@ -141,6 +142,16 @@
+     if (info.has_neon()) {
+         switch (op) {
+             default: break;
++            SIMD_OP(gain)            // [sfizz for MPC OS] simd/HelpersNEON.h
++            SIMD_OP(gain1)
++            SIMD_OP(multiplyAdd)
++            SIMD_OP(multiplyAdd1)
++            SIMD_OP(multiplyMul)
++            SIMD_OP(multiplyMul1)
++            SIMD_OP(add)
++            SIMD_OP(add1)
++            SIMD_OP(subtract)
++            SIMD_OP(subtract1)
+         }
+     }
+ #undef SIMD_OP
+@@ -175,6 +186,12 @@
+     setStatus(SIMDOps::upsampling, true);
+     setStatus(SIMDOps::clampAll, false);
+     setStatus(SIMDOps::allWithin, true);
++#if SFIZZ_CPU_FAMILY_AARCH64 || SFIZZ_CPU_FAMILY_ARM
++    // [sfizz for MPC OS] the NEON element-wise helpers (same results as scalar; see simd/HelpersNEON.h)
++    for (SIMDOps op : { SIMDOps::add, SIMDOps::add1, SIMDOps::subtract, SIMDOps::subtract1, SIMDOps::multiplyAdd,
++                        SIMDOps::multiplyAdd1, SIMDOps::multiplyMul, SIMDOps::multiplyMul1 })
++        setStatus(op, true);
++#endif
+ }
+ 
+ ///
+diff -ruN a/src/sfizz/ScopedFTZ.cpp b/src/sfizz/ScopedFTZ.cpp
+--- a/src/sfizz/ScopedFTZ.cpp
++++ b/src/sfizz/ScopedFTZ.cpp
+@@ -35,8 +35,8 @@
+ #if SFIZZ_HAVE_SSE
+     _mm_setcsr(static_cast<unsigned>(registerState));
+ #elif SFIZZ_HAVE_NEON && SFIZZ_CPU_FAMILY_ARM
+-    asm volatile("vmrs %0, fpscr" : : "r"(registerState));
++    asm volatile("vmsr fpscr, %0" : : "r"(registerState));   // [sfizz for MPC OS] was vmrs: never restored
+ #elif SFIZZ_HAVE_NEON && SFIZZ_CPU_FAMILY_AARCH64
+-    asm volatile("mrs %0, fpcr" : : "r"(registerState));
++    asm volatile("msr fpcr, %0" : : "r"(registerState));   // [sfizz for MPC OS] was mrs: never restored
+ #endif
+ }
+diff -ruN a/src/sfizz/Synth.cpp b/src/sfizz/Synth.cpp
+--- a/src/sfizz/Synth.cpp
++++ b/src/sfizz/Synth.cpp
+@@ -1091,6 +1091,11 @@
+ void Synth::renderBlock(AudioSpan<float> buffer) noexcept
+ {
+     Impl& impl = *impl_;
++    struct RenderEpoch {   // [sfizz for MPC OS] the file pool frees streamed memory only between blocks
++        FilePool& pool;
++        explicit RenderEpoch(FilePool& p) noexcept : pool(p) { pool.renderBlockBegin(); }
++        ~RenderEpoch() { pool.renderBlockEnd(); }
++    } renderEpoch { impl.resources_.getFilePool() };
+     ScopedFTZ ftz;
+     auto& callbackBreakdown = impl.callbackBreakdown_;
+     impl.resetCallbackBreakdown();
+diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
+--- a/src/sfizz/Voice.cpp
++++ b/src/sfizz/Voice.cpp
+@@ -13,6 +13,7 @@
+ #include "FilterPool.h"
+ #include "FlexEnvelope.h"
+ #include "Interpolators.h"
++#include <simde/x86/sse3.h>   // [sfizz for MPC OS] hadd, for the stereo Sinc 8
+ #include "LFO.h"
+ #include "MathHelpers.h"
+ #include "ModifierHelpers.h"
+@@ -259,6 +260,7 @@
+     } loop_;
+ 
+     FileDataHolder currentPromise_;
++    unsigned fileEpoch_ { 0 };   // [sfizz for MPC OS] the file's retireEpoch when this voice started
+ 
+     int samplesPerBlock_ { config::defaultSamplesPerBlock };
+     float sampleRate_ { config::defaultSampleRate };
+@@ -483,6 +485,7 @@
+             impl.switchState(State::cleanMeUp);
+             return false;
+         }
++        impl.fileEpoch_ = impl.currentPromise_->retireEpoch.load(std::memory_order_relaxed);
+         impl.updateLoopInformation();
+         impl.speedRatio_ = static_cast<float>(impl.currentPromise_->information.sampleRate / impl.sampleRate_);
+         impl.sourcePosition_ = sampleOffset(region, midiState);
+@@ -1075,6 +1078,11 @@
+         return;
+     }
+ 
++    // [sfizz for MPC OS] memory ran short and this file has played longest: fade out (as voice stealing does) while
++    // its data is still there, rather than run off its end
++    if (currentPromise_->retireEpoch.load(std::memory_order_relaxed) != fileEpoch_ && !offed_)
++        off(0, true);
++
+     auto source = currentPromise_->getData();
+     if (source.getNumFrames() == 0) {
+         DBG("[Voice] Empty source in promise");
+@@ -1100,8 +1108,15 @@
+         pitchEnvelope(pitch);
+ 
+         float baseRatio = pitchRatio_ * speedRatio_;
+-        for (size_t i = 0; i < numSamples; ++i)
+-            (*jumps)[i] = baseRatio * centsFactor(pitch[i]);
++        // [sfizz for MPC OS] a block whose pitch doesn't move (the usual case) needs one pow(), not one per sample
++        bool varies = false;   // no early exit: the compiler vectorizes it
++        for (size_t i = 1; i < numSamples; ++i)
++            varies |= pitch[i] != pitch[0];
++        if (!varies)
++            fill<float>(*jumps, baseRatio * centsFactor(pitch[0]));
++        else
++            for (size_t i = 0; i < numSamples; ++i)
++                (*jumps)[i] = baseRatio * centsFactor(pitch[i]);
+ 
+         // Take the first sample if the voice just started
+         if (age_ == 0)
+@@ -1113,6 +1128,9 @@
+         add1<int>(sourcePosition_, *indices);
+     }
+ 
++    // [sfizz for MPC OS] how far this voice reads: the streamer decodes a little ahead of the furthest reader
++    currentPromise_->noteRead(static_cast<size_t>(std::max(0, indices->back())) + 64);
++
+     // Update loop characteristics with the current CC state
+     updateLoopInformation();
+     const auto loop = this->loop_;
+@@ -1214,6 +1232,9 @@
+             }
+             i++;
+         }
++    } else if ((*indices)[0] <= (*indices)[numSamples - 1] && (*indices)[numSamples - 1] < sampleEnd) {
++        // [sfizz for MPC OS] the positions rise through the block and the last is before the end: the loop below would
++        // subtract 0 (no restart yet in this branch) and find nothing, so skip its per-sample work
+     } else { // One shots and loops that have released (for loop sustain) or ended (with loop counts)
+         for (unsigned i = 0; i < numSamples; ++i) {
+             (*indices)[i] -= sampleSize_ * blockRestarts;
+@@ -1226,6 +1247,9 @@
+                     continue;
+                 }
+ 
++                // [sfizz for MPC OS] the data ran out before the sample's end: streaming fell behind (counted)
++                if (!offed_ && sampleEnd + 1 < min(int(sampleEnd_), int(currentPromise_->information.end)))
++                    FilePool::noteUnderrun();
+                 off(int(i), true);
+                 fill<int>(indices->subspan(i), sampleEnd);
+                 fill<float>(coeffs->subspan(i), 0x1.fffffep-1);
+@@ -1356,12 +1380,59 @@
+ #endif
+ }
+ 
++// [sfizz for MPC OS] Sinc 8 for stereo sources, from the phase-ordered table (Interpolators.h): the eight
++// coefficients of a frame are interpolated once from two adjacent rows and used for both channels. Same kernel and
++// the same 8191-per-unit resolution as upstream's per-channel lookups; only the summation order differs.
++template <bool Adding>
++static void fillSinc8Stereo(const float* leftSource, const float* rightSource, float* left, float* right,
++                            const int* ind, const int* indEnd, const float* coeff, const float* addingGain) noexcept
++{
++    const float* rows = sinc8PolyphaseTable();
++    while (ind < indEnd) {
++        const float pos = *coeff * float(kSinc8Phases);
++        int k = static_cast<int>(pos);
++        k = k < 0 ? 0 : (k > kSinc8Phases - 1 ? kSinc8Phases - 1 : k);
++        const simde__m128 f = simde_mm_set1_ps(pos - float(k));
++        const float* r0 = rows + 8 * k;
++        const simde__m128 a0 = simde_mm_load_ps(r0), a1 = simde_mm_load_ps(r0 + 4);
++        const simde__m128 b0 = simde_mm_load_ps(r0 + 8), b1 = simde_mm_load_ps(r0 + 12);
++        const simde__m128 h0 = simde_mm_add_ps(a0, simde_mm_mul_ps(f, simde_mm_sub_ps(b0, a0)));
++        const simde__m128 h1 = simde_mm_add_ps(a1, simde_mm_mul_ps(f, simde_mm_sub_ps(b1, a1)));
++        const float* l = leftSource + *ind - 3;
++        const float* r = rightSource + *ind - 3;
++        const simde__m128 yl = simde_mm_add_ps(simde_mm_mul_ps(h0, simde_mm_loadu_ps(l)), simde_mm_mul_ps(h1, simde_mm_loadu_ps(l + 4)));
++        const simde__m128 yr = simde_mm_add_ps(simde_mm_mul_ps(h0, simde_mm_loadu_ps(r)), simde_mm_mul_ps(h1, simde_mm_loadu_ps(r + 4)));
++        const simde__m128 pairs = simde_mm_hadd_ps(yl, yr);   // l01 l23 r01 r23
++        alignas(16) float p[4];
++        simde_mm_store_ps(p, pairs);
++        const float leftOutput = p[0] + p[1];
++        const float rightOutput = p[2] + p[3];
++        IF_CONSTEXPR(Adding) {
++            const float g = *addingGain++;
++            *left += g * leftOutput;
++            *right += g * rightOutput;
++        } else {
++            *left = leftOutput;
++            *right = rightOutput;
++        }
++        ++ind; ++coeff; ++left; ++right;
++    }
++}
++
+ template <InterpolatorModel M, bool Adding>
+ void Voice::Impl::fillInterpolated(
+     const AudioSpan<const float>& source, const AudioSpan<float>& dest,
+     absl::Span<const int> indices, absl::Span<const float> coeffs,
+     absl::Span<const float> addingGains)
+ {
++    IF_CONSTEXPR(M == kInterpolatorSinc8) {   // [sfizz for MPC OS]
++        if (source.getNumChannels() == 2 && dest.getNumChannels() >= 2) {
++            fillSinc8Stereo<Adding>(source.getConstSpan(0).data(), source.getConstSpan(1).data(),
++                                    dest.getChannel(0), dest.getChannel(1), indices.data(),
++                                    indices.data() + indices.size(), coeffs.data(), addingGains.data());
++            return;
++        }
++    }
+     auto* ind = indices.data();
+     auto* coeff = coeffs.data();
+     auto* addingGain = addingGains.data();
+diff -ruN a/src/sfizz/simd/HelpersNEON.cpp b/src/sfizz/simd/HelpersNEON.cpp
+--- a/src/sfizz/simd/HelpersNEON.cpp
++++ b/src/sfizz/simd/HelpersNEON.cpp
+@@ -5,12 +5,102 @@
+ // If not, contact the sfizz maintainers at https://github.com/sfztools/sfizz
+ 
+ #include "HelpersNEON.h"
++#include "../SIMDConfig.h"
+ #include "Common.h"
+ 
+ #if SFIZZ_HAVE_NEON
+ #include <arm_neon.h>
+ #endif
+ 
+-using Type = float;
+-constexpr unsigned TypeAlignment = 4;
+-constexpr unsigned ByteAlignment = TypeAlignment * sizeof(Type);
++// [sfizz for MPC OS] see HelpersNEON.h. Unaligned loads and stores are fine on ARMv7 NEON; each 4-lane step reads
++// before it writes, so in-place calls are safe.
++#if SFIZZ_HAVE_NEON
++#define LANES(body) for (; i + 4 <= size; i += 4) { body; }
++#else
++#define LANES(body)
++#endif
++
++void gainNEON(const float* gain, const float* input, float* output, unsigned size) noexcept
++{
++    unsigned i = 0;
++    LANES(vst1q_f32(output + i, vmulq_f32(vld1q_f32(gain + i), vld1q_f32(input + i))))
++    for (; i < size; ++i) output[i] = gain[i] * input[i];
++}
++
++void gain1NEON(float gain, const float* input, float* output, unsigned size) noexcept
++{
++    unsigned i = 0;
++#if SFIZZ_HAVE_NEON
++    const float32x4_t g = vdupq_n_f32(gain);
++#endif
++    LANES(vst1q_f32(output + i, vmulq_f32(g, vld1q_f32(input + i))))
++    for (; i < size; ++i) output[i] = gain * input[i];
++}
++
++void multiplyAddNEON(const float* gain, const float* input, float* output, unsigned size) noexcept
++{
++    unsigned i = 0;
++    LANES(vst1q_f32(output + i, vaddq_f32(vld1q_f32(output + i), vmulq_f32(vld1q_f32(gain + i), vld1q_f32(input + i)))))
++    for (; i < size; ++i) output[i] += gain[i] * input[i];
++}
++
++void multiplyAdd1NEON(float gain, const float* input, float* output, unsigned size) noexcept
++{
++    unsigned i = 0;
++#if SFIZZ_HAVE_NEON
++    const float32x4_t g = vdupq_n_f32(gain);
++#endif
++    LANES(vst1q_f32(output + i, vaddq_f32(vld1q_f32(output + i), vmulq_f32(g, vld1q_f32(input + i)))))
++    for (; i < size; ++i) output[i] += gain * input[i];
++}
++
++void multiplyMulNEON(const float* gain, const float* input, float* output, unsigned size) noexcept
++{
++    unsigned i = 0;
++    LANES(vst1q_f32(output + i, vmulq_f32(vld1q_f32(output + i), vmulq_f32(vld1q_f32(gain + i), vld1q_f32(input + i)))))
++    for (; i < size; ++i) output[i] *= gain[i] * input[i];
++}
++
++void multiplyMul1NEON(float gain, const float* input, float* output, unsigned size) noexcept
++{
++    unsigned i = 0;
++#if SFIZZ_HAVE_NEON
++    const float32x4_t g = vdupq_n_f32(gain);
++#endif
++    LANES(vst1q_f32(output + i, vmulq_f32(vld1q_f32(output + i), vmulq_f32(g, vld1q_f32(input + i)))))
++    for (; i < size; ++i) output[i] *= gain * input[i];
++}
++
++void addNEON(const float* input, float* output, unsigned size) noexcept
++{
++    unsigned i = 0;
++    LANES(vst1q_f32(output + i, vaddq_f32(vld1q_f32(output + i), vld1q_f32(input + i))))
++    for (; i < size; ++i) output[i] += input[i];
++}
++
++void add1NEON(float value, float* output, unsigned size) noexcept
++{
++    unsigned i = 0;
++#if SFIZZ_HAVE_NEON
++    const float32x4_t v = vdupq_n_f32(value);
++#endif
++    LANES(vst1q_f32(output + i, vaddq_f32(vld1q_f32(output + i), v)))
++    for (; i < size; ++i) output[i] += value;
++}
++
++void subtractNEON(const float* input, float* output, unsigned size) noexcept
++{
++    unsigned i = 0;
++    LANES(vst1q_f32(output + i, vsubq_f32(vld1q_f32(output + i), vld1q_f32(input + i))))
++    for (; i < size; ++i) output[i] -= input[i];
++}
++
++void subtract1NEON(float value, float* output, unsigned size) noexcept
++{
++    unsigned i = 0;
++#if SFIZZ_HAVE_NEON
++    const float32x4_t v = vdupq_n_f32(value);
++#endif
++    LANES(vst1q_f32(output + i, vsubq_f32(vld1q_f32(output + i), v)))
++    for (; i < size; ++i) output[i] -= value;
++}
+diff -ruN a/src/sfizz/simd/HelpersNEON.h b/src/sfizz/simd/HelpersNEON.h
+--- a/src/sfizz/simd/HelpersNEON.h
++++ b/src/sfizz/simd/HelpersNEON.h
+@@ -5,3 +5,18 @@
+ // If not, contact the sfizz maintainers at https://github.com/sfztools/sfizz
+ 
+ #pragma once
++
++// [sfizz for MPC OS] NEON versions of the element-wise helpers. Upstream's NEON table was empty, so 32-bit ARM ran the
++// scalar loops; the compiler's own vectorization of those bails out at run time for in-place calls (input == output),
++// which is how sfizz calls most of them. Each element gets exactly the scalar version's operations (a multiply, an
++// add or a subtract, in the same order, never fused), so the results are the same.
++void gainNEON(const float* gain, const float* input, float* output, unsigned size) noexcept;
++void gain1NEON(float gain, const float* input, float* output, unsigned size) noexcept;
++void multiplyAddNEON(const float* gain, const float* input, float* output, unsigned size) noexcept;
++void multiplyAdd1NEON(float gain, const float* input, float* output, unsigned size) noexcept;
++void multiplyMulNEON(const float* gain, const float* input, float* output, unsigned size) noexcept;
++void multiplyMul1NEON(float gain, const float* input, float* output, unsigned size) noexcept;
++void addNEON(const float* input, float* output, unsigned size) noexcept;
++void add1NEON(float value, float* output, unsigned size) noexcept;
++void subtractNEON(const float* input, float* output, unsigned size) noexcept;
++void subtract1NEON(float value, float* output, unsigned size) noexcept;
+diff -ruN a/src/sfizz/utility/Timing.h b/src/sfizz/utility/Timing.h
+--- a/src/sfizz/utility/Timing.h
++++ b/src/sfizz/utility/Timing.h
+@@ -27,6 +27,9 @@
+  * @brief Creates an RAII logger which fills or adds to a duration on destruction
+  *
+  */
++// [sfizz for MPC OS] the per-voice and per-callback timings only feed sfizz's statistics and log files, which the
++// MPC never reads. Each cost two clock reads (about ten per voice per block), a measurable share of a voice on the
++// MPC's CPU, so ScopedTiming is a no-op here. The figures it would fill stay 0.
+ struct ScopedTiming
+ {
+     enum class Operation
+@@ -35,30 +38,7 @@
+         replaceDuration
+     };
+     ScopedTiming() = delete;
+-    /**
+-     * @brief Construct a new Scoped Logger object
+-     *
+-     * @param targetDuration
+-     * @param op
+-     */
+-    ScopedTiming(double& targetDuration, Operation op = Operation::replaceDuration)
+-    : targetDuration(targetDuration), operation(op) {}
+-    ~ScopedTiming()
+-    {
+-        switch(operation)
+-        {
+-        case(Operation::replaceDuration):
+-            targetDuration = (highResNow() - creationTime).count();
+-            break;
+-        case(Operation::addToDuration):
+-            targetDuration += (highResNow() - creationTime).count();
+-            break;
+-        }
+-    }
+-
+-    double& targetDuration;
+-    const Operation operation;
+-    const TimePoint creationTime { highResNow() };
++    ScopedTiming(double&, Operation = Operation::replaceDuration) noexcept {}
+ };
+ 
+ }

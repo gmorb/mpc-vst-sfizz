@@ -22,6 +22,7 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include <new>
 #include <string>
 #include <thread>
 #include <vector>
@@ -32,6 +33,9 @@
 extern "C" {
 #include "engine.h"
 void sfizz_mpc_set_gentle_loading(int gentle);   // vendored sfizz, FilePool.cpp
+void sfizz_mpc_set_stream_budget(unsigned long long bytes);
+void sfizz_mpc_stream_stats(unsigned long long* bytes, unsigned long long* budget, unsigned* streams, unsigned* starved,
+                            unsigned* failed);
 }
 
 namespace {
@@ -211,6 +215,25 @@ struct Inst {
     }
 };
 
+// The decoded-sample memory budget (all instances): a third of the memory free when the first instance starts, within
+// 48-384 MB. MPC itself and the user's other programs need the rest; a 32-bit process also has a limited address space.
+void init_stream_budget() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        unsigned long long availKb = 0;
+        if (FILE *f = std::fopen("/proc/meminfo", "r")) {
+            char line[128];
+            while (std::fgets(line, sizeof line, f))
+                if (std::sscanf(line, "MemAvailable: %llu kB", &availKb) == 1)
+                    break;
+            std::fclose(f);
+        }
+        unsigned long long budget = availKb ? availKb * 1024 / 3 : (192ull << 20);
+        budget = std::max(48ull << 20, std::min(384ull << 20, budget));
+        sfizz_mpc_set_stream_budget(budget);
+    });
+}
+
 void push_job(Inst *o, std::function<void()> f) {
     {
         std::lock_guard<std::mutex> l(o->job_m);
@@ -338,11 +361,18 @@ void load_file(Inst *o, std::string path) {
         o->file_label = "Loading...";
     }
     o->display_rev++;
-    bool ok;
+    bool ok = false, oom = false;
     {
         std::lock_guard<std::mutex> l(o->synth_m);
-        ok = o->synth.loadSfzFile(path);
-        if (ok) describe(o);
+        try {
+            ok = o->synth.loadSfzFile(path);
+            if (ok) describe(o);
+        } catch (const std::bad_alloc&) {
+            oom = true;   // not enough memory for this instrument's preloads
+            try { o->synth.loadSfzFile(""); } catch (...) {}
+        } catch (...) {
+            try { o->synth.loadSfzFile(""); } catch (...) {}
+        }
     }
     {
         std::lock_guard<std::mutex> l(o->ui_m);
@@ -350,7 +380,7 @@ void load_file(Inst *o, std::string path) {
         o->file_label = stem(path);
         char b[96];
         if (ok) std::snprintf(b, sizeof b, "%d regions, %d samples", o->n_regions, o->n_samples);
-        o->status = ok ? b : "Could not load " + base_name(path);
+        o->status = ok ? b : oom ? "Not enough memory for " + base_name(path) : "Could not load " + base_name(path);
     }
     o->loading = 0;
     o->changed |= CH_VOLUME | CH_PAN;
@@ -438,11 +468,13 @@ std::vector<std::string> scala_files(Inst *o) {
 
 void load_scala(Inst *o, std::string path) {
     if (path.empty() || !is_file(path)) path = o->data_dir + "/DefaultScale.scl";
-    bool ok;
+    bool ok = false;
     {
         std::lock_guard<std::mutex> l(o->synth_m);
-        ok = o->synth.loadScalaFile(path);
-        o->synth.setScalaRootKey(o->root_oct * 12 + o->root_note);
+        try {
+            ok = o->synth.loadScalaFile(path);
+            o->synth.setScalaRootKey(o->root_oct * 12 + o->root_note);
+        } catch (...) {}
     }
     std::lock_guard<std::mutex> l(o->ui_m);
     o->scala_path = path;
@@ -471,9 +503,13 @@ void apply_engine_settings(Inst *o) {
     uint32_t preload = uint32_t(1024) << std::max(0, std::min(6, o->preload_idx.load()));
     if (voices == o->applied_voices && factor == o->applied_factor && preload == o->applied_preload) return;
     std::lock_guard<std::mutex> l(o->synth_m);
-    if (voices != o->applied_voices) o->synth.setNumVoices(voices);
-    if (factor != o->applied_factor) o->synth.setOversamplingFactor(factor);
-    if (preload != o->applied_preload) o->synth.setPreloadSize(preload);
+    try {
+        if (voices != o->applied_voices) o->synth.setNumVoices(voices);
+        if (factor != o->applied_factor) o->synth.setOversamplingFactor(factor);
+        if (preload != o->applied_preload) o->synth.setPreloadSize(preload);
+    } catch (...) {   // out of memory: keep what sfizz has
+        set_status(o, "Not enough memory for that setting");
+    }
     o->applied_voices = voices;
     o->applied_factor = factor;
     o->applied_preload = preload;
@@ -502,6 +538,7 @@ void *create(const char *data_dir) {
     // Gentle background loading, always (vendored FilePool.cpp): normal priority, paced, stops when a file is unused.
     // The sound is unchanged; it only stops each key hit from bursting a whole sample file through a real-time thread.
     sfizz_mpc_set_gentle_loading(1);
+    init_stream_budget();
     // the built-in default (a sine) and the default scale load here, so a new instance plays at once
     load_scala(o, "");
     load_file(o, "");
@@ -610,6 +647,8 @@ void render(void *inst, int16_t *out, int frames) {
     l.unlock();
     for (int i = 0; i < frames; i++) {
         float a = L[i] * 32767.0f, b = R[i] * 32767.0f;
+        if (!(a == a)) a = 0.0f;   // NaN: silence, not a full-scale click
+        if (!(b == b)) b = 0.0f;
         out[2 * i] = int16_t(std::lrint(std::max(-32768.0f, std::min(32767.0f, a))));
         out[2 * i + 1] = int16_t(std::lrint(std::max(-32768.0f, std::min(32767.0f, b))));
     }
@@ -686,16 +725,14 @@ int puti(char *buf, int len, int v) { return std::snprintf(buf, size_t(len), "%d
 
 std::string state_text(Inst *o) {
     std::lock_guard<std::mutex> l(o->ui_m);
-    char b[2048];
+    char b[512];
     std::snprintf(b, sizeof b,
-                  "sfizz-mpc 1\nfile=%s\nscala=%s\nvolume=%d\npan=%d\npolyphony=%d\noversampling=%d\npreload=%d\n"
-                  "sustain_cancels=%d\nsample_quality=%d\nosc_quality=%d\nroot_note=%d\nroot_oct=%d\ntuning_freq=%.2f\n"
-                  "tuning_preset=%d\nstretch=%.4f\n",
-                  o->file_path.c_str(), o->scala_path.c_str(), o->volume.load(), o->pan.load(), o->polyphony_idx.load(),
-                  o->oversampling_idx.load(), o->preload_idx.load(), o->sustain_cancels.load(), o->sample_quality.load(),
-                  o->osc_quality.load(), o->root_note.load(), o->root_oct.load(), double(o->tuning_freq.load()),
-                  o->tuning_preset.load(), double(o->stretch.load()));
-    std::string s = b;
+                  "volume=%d\npan=%d\npolyphony=%d\noversampling=%d\npreload=%d\nsustain_cancels=%d\nsample_quality=%d\n"
+                  "osc_quality=%d\nroot_note=%d\nroot_oct=%d\ntuning_freq=%.2f\ntuning_preset=%d\nstretch=%.4f\n",
+                  o->volume.load(), o->pan.load(), o->polyphony_idx.load(), o->oversampling_idx.load(), o->preload_idx.load(),
+                  o->sustain_cancels.load(), o->sample_quality.load(), o->osc_quality.load(), o->root_note.load(),
+                  o->root_oct.load(), double(o->tuning_freq.load()), o->tuning_preset.load(), double(o->stretch.load()));
+    std::string s = "sfizz-mpc 1\nfile=" + o->file_path + "\nscala=" + o->scala_path + "\n" + b;
     for (int i = 0; i < CC_SLOTS; i++)
         if (o->slot_cc[i] >= 0) s += "cc" + std::to_string(o->slot_cc[i]) + "=" + std::to_string(o->cc_val[i].load()) + "\n";
     return s;

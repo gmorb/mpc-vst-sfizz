@@ -41,12 +41,34 @@
 #include <system_error>
 #include <atomic>
 #include <chrono>
+#include <algorithm>
+#include <new>
 #if defined(_WIN32)
 #include <windows.h>
 #else
 #include <pthread.h>
 #endif
 using namespace std::placeholders;
+
+// [sfizz for MPC OS] bounded streaming settings and counters (see the end of the file)
+namespace {
+std::atomic<bool> gGentleLoading { false };
+std::atomic<size_t> gStreamBytes { 0 };                    // decoded sample memory in use, all file pools
+std::atomic<size_t> gStreamBudget { size_t(192) << 20 };   // set by the host from the device's free memory
+std::atomic<unsigned> gStreamCount { 0 };
+std::atomic<size_t> gReserved { 0 };                       // address space reserved by streams (whole decoded files)
+// address space for whole decoded files: plenty for idle files to stay cached, well inside a 32-bit process
+size_t reserveLimit() { return std::min<size_t>(std::max<size_t>(gStreamBudget.load() * 3, size_t(256) << 20), size_t(768) << 20); }
+std::atomic<unsigned> gStarved { 0 };                      // decode steps refused by the budget
+std::atomic<unsigned> gFailed { 0 };                       // allocations that failed
+std::atomic<unsigned> gTaken { 0 };                        // playing files freed for newer ones (memory short)
+std::atomic<unsigned> gUnderruns { 0 };                    // notes cut because their data wasn't decoded in time
+constexpr double kUrgentSeconds = 0.35;   // first pass: every playing file this far ahead of its furthest reader
+constexpr double kAheadSeconds = 1.25;    // second pass: this far ahead
+constexpr int kTickMs = 8;                // the streamer's round
+constexpr int kWaitMs = 150;              // a new file waits this long for memory (its preloaded start plays meanwhile)
+constexpr int kIdleSeconds = sfz::config::fileClearingPeriod;   // an unused file's memory is kept this long
+}
 
 static std::weak_ptr<ThreadPool> globalThreadPoolWeakPtr;
 static std::mutex globalThreadPoolMutex;
@@ -72,7 +94,7 @@ static std::shared_ptr<ThreadPool> globalThreadPool()
 }
 
 void readBaseFile(sfz::AudioReader& reader, sfz::FileAudioBuffer& output, uint32_t numFrames)
-{
+try {
     output.reset();
     output.resize(numFrames);
 
@@ -90,6 +112,8 @@ void readBaseFile(sfz::AudioReader& reader, sfz::FileAudioBuffer& output, uint32
         reader.readNextBlock(tempReadBuffer.data(), numFrames);
         sfz::readInterleaved(tempReadBuffer, output.getSpan(0), output.getSpan(1));
     }
+} catch (const std::bad_alloc&) {   // [sfizz for MPC OS] out of memory: an empty buffer (a silent note), not an abort
+    output.reset();
 }
 
 sfz::FileAudioBuffer readFromFile(sfz::AudioReader& reader, uint32_t numFrames)
@@ -146,7 +170,7 @@ sfz::FilePool::FilePool()
     : filesToLoad(alignedNew<FileQueue>()),
       threadPool(globalThreadPool())
 {
-    gentleThread = std::thread(&FilePool::gentleThreadJob, this);   // [sfizz for MPC OS]
+    streamThread = std::thread(&FilePool::streamerJob, this);   // [sfizz for MPC OS]
     loadingJobs.reserve(config::maxVoices);
     lastUsedFiles.reserve(config::maxVoices);
     garbageToCollect.reserve(config::maxVoices);
@@ -156,9 +180,13 @@ sfz::FilePool::~FilePool()
 {
     std::error_code ec;
 
-    gentleRun = false;   // [sfizz for MPC OS]
-    if (gentleThread.joinable())
-        gentleThread.join();
+    {   // [sfizz for MPC OS]
+        std::lock_guard<std::mutex> lock { streamMutex };
+        streamRun = false;
+    }
+    streamWake.notify_all();
+    if (streamThread.joinable())
+        streamThread.join();
 
     garbageFlag = false;
     semGarbageBarrier.post(ec);
@@ -168,7 +196,6 @@ sfz::FilePool::~FilePool()
     dispatchBarrier.post(ec);
     dispatchThread.join();
 
-    std::lock_guard<std::mutex> guard { loadingJobsMutex };   // [sfizz for MPC OS] gentle streams requeue under it
     for (auto& job : loadingJobs)
         job.wait();
 }
@@ -368,23 +395,9 @@ void sfz::FilePool::resetPreloadCallCounts() noexcept
         loadedFile.second.preloadCallCount = 0;
 }
 
-// [sfizz for MPC OS] Upstream relied on file ids expiring. Gentle streams outlive a note and point at the file records, so
-// before records are cleared or removed they are told to stop (generation) and waited for. Not for the audio thread.
-void sfz::FilePool::emptyFileLoadingQueues() noexcept
-{
-    streamGeneration.fetch_add(1);
-    std::lock_guard<std::mutex> guard { loadingJobsMutex };
-    for (auto& job : loadingJobs)
-        job.wait();
-    loadingJobs.clear();
-    std::lock_guard<std::mutex> busy { gentleWorkMutex };
-    std::lock_guard<std::mutex> list { gentleListMutex };
-    gentleStreams.clear();
-}
-
 void sfz::FilePool::removeUnusedPreloadedData() noexcept
 {
-    emptyFileLoadingQueues();
+    waitForBackgroundLoading();   // [sfizz for MPC OS] entries are erased below
     for (auto it = preloadedFiles.begin(), end = preloadedFiles.end(); it != end; ) {
         auto copyIt = it++;
         if (copyIt->second.preloadCallCount == 0) {
@@ -475,6 +488,7 @@ sfz::FileDataHolder sfz::FilePool::getFilePromise(const std::shared_ptr<FileId>&
 
 void sfz::FilePool::setPreloadSize(uint32_t preloadSize) noexcept
 {
+    waitForBackgroundLoading();   // [sfizz for MPC OS] the preloads are rewritten below
     this->preloadSize = preloadSize;
     if (loadInRam)
         return;
@@ -488,152 +502,23 @@ void sfz::FilePool::setPreloadSize(uint32_t preloadSize) noexcept
     }
 }
 
-// ---- [sfizz for MPC OS] gentle loading -------------------------------------------------------------------------------
-static std::atomic<bool> gGentleLoading { false };
-constexpr double kGentleAheadSeconds = 1.0;   // decoded ahead of the start at once (the preload covers the first moments)
-constexpr double kGentleRate = 2.0;           // then at most this many times real time (enough for a note an octave up)
-constexpr int kGentleTickMs = 15;            // the streaming thread's round over all playing files
-
-void sfz::FilePool::setGentleLoading(bool gentle) noexcept { gGentleLoading = gentle; }
-
-struct sfz::FilePool::GentleStream {
-    std::weak_ptr<FileId> id;
-    FileData* data { nullptr };
-    fs::path file;
-    bool reverse { false };
-    AudioReaderPtr reader;
-    size_t numFrames { 0 };
-    unsigned numChannels { 0 };
-    size_t out { 0 };
-    double rate { 48000.0 };
-    unsigned generation { 0 };
-    std::chrono::steady_clock::time_point started;
-    sfz::Buffer<float> block { static_cast<size_t>(sfz::config::fileChunkSize) * 2 };
-    bool draining { false };   // stopped: voices read the preload again; free once that's sure
-    std::chrono::steady_clock::time_point drainSince;
-
-    bool open() // (re)starts from the beginning; the output buffer is sized but not cleared: voices read only decoded frames
-    {
-        std::error_code ec;
-        reader = createAudioReader(file, reverse, &ec);
-        if (ec)
-            return false;
-        numFrames = static_cast<size_t>(reader->frames());
-        numChannels = reader->channels();
-        rate = reader->sampleRate() > 0 ? reader->sampleRate() : 48000.0;
-        block.resize(static_cast<size_t>(sfz::config::fileChunkSize) * numChannels);
-        out = 0;
-        started = std::chrono::steady_clock::now();
-        if (data->fileData.getNumFrames() != numFrames || data->fileData.getNumChannels() != numChannels) {
-            data->fileData.reset();
-            data->fileData.addChannels(numChannels);
-            data->fileData.resize(numFrames);
-        }
-        return true;
-    }
-};
-
-// One step for one file, never blocking: decode up to the allowed point, or finish, or stop when nobody plays it.
-sfz::FilePool::GentleResult sfz::FilePool::gentleStep(GentleStream& st) noexcept
-{
-    if (!dispatchFlag || streamGeneration.load() != st.generation || st.id.expired())
-        return GentleResult::Finished;   // clearing or closing: the file pool resets these files itself
-    FileData& fd = *st.data;
-    const auto now = std::chrono::steady_clock::now();
-
-    if (st.draining) {
-        if (fd.readerCount.load() > 0) {          // a note started meanwhile: start over (it plays the preload until then)
-            st.draining = false;
-            return st.open() ? GentleResult::Continue : GentleResult::Finished;
-        }
-        if (now - st.drainSince < std::chrono::milliseconds(20))
-            return GentleResult::Continue;        // until no render block can still be reading the old frames
-        fd.fileData.reset();
-        fd.status = FileData::Status::Preloaded;
-        auto expected = FileData::Status::Preloaded;   // a note that started between the checks saw "Streaming": take it over
-        if (fd.readerCount.load() > 0 && fd.status.compare_exchange_strong(expected, FileData::Status::Streaming)) {
-            st.draining = false;
-            return st.open() ? GentleResult::Continue : GentleResult::Finished;
-        }
-        return GentleResult::Finished;
-    }
-
-    if (fd.readerCount.load() <= 0) {
-        // No voice plays the file any more: back to the preloaded start (as triggerGarbageCollection() does for idle files)
-        fd.availableFrames = 0;
-        st.draining = true;
-        st.drainSince = now;
-        return GentleResult::Continue;
-    }
-
-    const size_t chunk = static_cast<size_t>(config::fileChunkSize);
-    const double elapsed = std::chrono::duration<double>(now - st.started).count();
-    const double allowed = st.rate * (kGentleAheadSeconds + kGentleRate * elapsed);
-    while (st.out < st.numFrames && double(st.out) < allowed) {
-        const size_t want = std::min(chunk, st.numFrames - st.out);
-        const size_t got = static_cast<size_t>(st.reader->readNextBlock(st.block.data(), want));
-        if (got == 0) {
-            st.numFrames = st.out;
-            break;
-        }
-        for (unsigned c = 0; c < st.numChannels; ++c) {
-            const auto dst = fd.fileData.getSpan(c).subspan(st.out, got);
-            for (size_t i = 0; i < got; ++i)
-                dst[i] = st.block[i * st.numChannels + c];
-        }
-        st.out += got;
-        fd.availableFrames.fetch_add(got);
-    }
-
-    if (st.out >= st.numFrames) {
-        fd.status = FileData::Status::Done;
-        std::shared_ptr<FileId> id = st.id.lock();
-        if (id) {
-            std::lock_guard<SpinMutex> guard { garbageAndLastUsedMutex };
-            if (absl::c_find(lastUsedFiles, *id) == lastUsedFiles.end())
-                lastUsedFiles.push_back(*id);
-        }
-        return GentleResult::Finished;
-    }
-    return GentleResult::Continue;
-}
-
-void sfz::FilePool::gentleThreadJob() noexcept
-{
-    std::vector<std::shared_ptr<GentleStream>> work;
-    while (gentleRun.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(kGentleTickMs));
-        std::lock_guard<std::mutex> busy { gentleWorkMutex };
-        {
-            std::lock_guard<std::mutex> list { gentleListMutex };
-            work.swap(gentleStreams);
-        }
-        if (work.empty())
-            continue;
-        std::vector<std::shared_ptr<GentleStream>> keep;
-        for (auto& st : work)
-            if (gentleStep(*st) == GentleResult::Continue)
-                keep.push_back(st);
-        work.clear();
-        std::lock_guard<std::mutex> list { gentleListMutex };
-        for (auto& st : keep)
-            if (st->generation == streamGeneration.load())
-                gentleStreams.push_back(std::move(st));
-    }
-}
-
 void sfz::FilePool::loadingJob(const QueuedFileData& data) noexcept
 {
-    if (gGentleLoading.load()) {
-#if !defined(_WIN32)
-        // ordinary scheduling: the device's real-time audio threads come first (workers may have been raised before)
-        sched_param param {};
-        param.sched_priority = 0;
-        pthread_setschedparam(pthread_self(), SCHED_OTHER, &param);
-#endif
-    } else {
-        raiseCurrentThreadPriority();
+    if (gGentleLoading.load()) {   // [sfizz for MPC OS] claim the file, then let the streamer do the work
+        if (data.id.expired())
+            return;
+        auto expected = FileData::Status::Preloaded;
+        if (!data.data->status.compare_exchange_strong(expected, FileData::Status::Streaming))
+            return;   // already streaming, done, or not ready
+        {
+            std::lock_guard<std::mutex> lock { streamMutex };
+            streamRequests.push_back(data);
+        }
+        streamWake.notify_one();
+        return;
     }
+
+    raiseCurrentThreadPriority();
 
     std::shared_ptr<FileId> id = data.id.lock();
     if (!id) {
@@ -672,23 +557,6 @@ void sfz::FilePool::loadingJob(const QueuedFileData& data) noexcept
     // Someone else got the token
     if (!data.data->status.compare_exchange_strong(currentStatus, FileData::Status::Streaming))
         return;
-
-    if (gGentleLoading.load()) {   // [sfizz for MPC OS]
-        auto st = std::make_shared<GentleStream>();
-        st->id = data.id;
-        st->data = data.data;
-        st->file = file;
-        st->reverse = id->isReverse();
-        st->generation = streamGeneration.load();
-        if (!st->open())
-            return;
-        if (gentleStep(*st) == GentleResult::Continue) {   // the first seconds now; the streaming thread does the rest
-            std::lock_guard<std::mutex> list { gentleListMutex };
-            if (st->generation == streamGeneration.load())
-                gentleStreams.push_back(std::move(st));
-        }
-        return;
-    }
 
     streamFromFile(*reader, data.data->fileData, &data.data->availableFrames);
 
@@ -752,12 +620,20 @@ void sfz::FilePool::garbageJob() noexcept
 
 void sfz::FilePool::waitForBackgroundLoading() noexcept
 {
-    std::lock_guard<std::mutex> guard { loadingJobsMutex };
+    {
+        std::lock_guard<std::mutex> guard { loadingJobsMutex };
 
-    for (auto& job : loadingJobs)
-        job.wait();
+        for (auto& job : loadingJobs)
+            job.wait();
 
-    loadingJobs.clear();
+        loadingJobs.clear();
+    }
+    stopAllStreams();   // [sfizz for MPC OS] files are about to be cleared or moved: no stream may outlive this
+}
+
+void sfz::FilePool::emptyFileLoadingQueues() noexcept   // [sfizz for MPC OS] was a no-op
+{
+    waitForBackgroundLoading();
 }
 
 void sfz::FilePool::raiseCurrentThreadPriority() noexcept
@@ -855,5 +731,369 @@ void sfz::FilePool::triggerGarbageCollection() noexcept
     ASSERT(!ec);
 }
 
-// [sfizz for MPC OS] C hook for the engine adapter (src/sfizz_mpc.cpp): 1 = gentle loading, 0 = upstream.
+
+// =====================================================================================================================
+// [sfizz for MPC OS] Bounded streaming
+// =====================================================================================================================
+
+struct sfz::FilePool::GentleStream {
+    std::weak_ptr<FileId> id;
+    FileData* data { nullptr };
+    AudioReaderPtr reader;
+    size_t numFrames { 0 };
+    unsigned numChannels { 0 };
+    size_t out { 0 };          // frames decoded into data->fileData
+    double rate { 48000.0 };
+    size_t bytes { 0 };        // charged to the budget
+    size_t reserved { 0 };     // address space held (the whole decoded file)
+    bool idle { false };
+    std::chrono::steady_clock::time_point idleSince;
+    std::chrono::steady_clock::time_point began;   // when its data started: the oldest playing file yields first
+    bool retiring { false };                       // its voices are fading out; freed once they have
+    bool waiting { false };                        // requested, its memory not reserved yet
+    std::chrono::steady_clock::time_point requestedAt;
+    std::chrono::steady_clock::time_point retiredAt;
+    sfz::Buffer<float> block;
+};
+
+void sfz::FilePool::setGentleLoading(bool gentle) noexcept { gGentleLoading = gentle; }
+void sfz::FilePool::setStreamBudget(size_t bytes) noexcept { gStreamBudget = bytes; }
+void sfz::FilePool::noteUnderrun() noexcept { gUnderruns++; }
+sfz::FilePool::StreamStats sfz::FilePool::streamStats() noexcept
+{
+    return { gStreamBytes.load(), gStreamBudget.load(), gStreamCount.load(), gStarved.load(), gFailed.load() };
+}
+
+// Open the file (once) and reserve the whole decoded size. The pages are only committed as frames are written (the
+// buffer is a fresh mapping), so memory follows what was decoded, not the file's length. `Wait`: the address space
+// for it isn't free yet (older files are being retired to make room); try again on the next tick.
+sfz::FilePool::BeginResult sfz::FilePool::streamBegin(GentleStream& st) noexcept
+{
+    std::shared_ptr<FileId> id = st.id.lock();
+    if (!id)
+        return BeginResult::Failed;
+    try {
+        if (!st.reader) {
+            std::error_code ec;
+            st.reader = createAudioReader(rootDirectory / id->filename(), id->isReverse(), &ec);
+            if (ec || !st.reader)
+                return BeginResult::Failed;
+            st.numFrames = static_cast<size_t>(st.reader->frames());
+            st.numChannels = st.reader->channels();
+            st.rate = st.reader->sampleRate() > 0 ? st.reader->sampleRate() : 48000.0;
+            if (st.numChannels < 1 || st.numChannels > 2 || st.numFrames == 0)
+                return BeginResult::Failed;
+            if (!st.block.resize(static_cast<size_t>(config::fileChunkSize) * st.numChannels, std::nothrow))
+                return BeginResult::Failed;
+        }
+        const size_t reserve = st.numFrames * st.numChannels * sizeof(float);
+        if (gReserved.load() + reserve > reserveLimit() && !streamEvictIdle(0, &st, reserve)) {
+            streamTakeFromOldest(0, reserve, st);   // too many files open for a 32-bit process: retire the oldest
+            gStarved++;
+            return BeginResult::Wait;
+        }
+        FileAudioBuffer& fd = st.data->fileData;
+        fd.reset();
+        fd.addChannels(st.numChannels);
+        if (!fd.resize(st.numFrames, std::nothrow)) {
+            fd.reset();
+            gFailed++;
+            return BeginResult::Failed;
+        }
+        st.reserved = reserve;
+        gReserved += reserve;
+    } catch (const std::exception&) {   // bad_alloc and the like: never let it reach the host
+        st.data->fileData.reset();
+        gFailed++;
+        return BeginResult::Failed;
+    }
+    st.out = 0;
+    st.bytes = 0;
+    st.idle = false;
+    st.waiting = false;
+    st.retiring = false;
+    st.began = std::chrono::steady_clock::now();
+    st.data->availableFrames = 0;
+    return BeginResult::Ok;
+}
+
+// After freeing a file that voices still read (a note started on it meanwhile): stream it again. Returns false when
+// the stream object is done with (its file plays its preloaded start; a later note can stream it again).
+bool sfz::FilePool::streamClaimAgain(GentleStream& st) noexcept
+{
+    if (st.data->readerCount.load() > 0) {
+        auto expected = FileData::Status::Preloaded;
+        if (st.data->status.compare_exchange_strong(expected, FileData::Status::Streaming)) {
+            st.reader.reset();   // reopen: decoding starts over from the file's start
+            const BeginResult r = streamBegin(st);
+            if (r == BeginResult::Ok)
+                return true;
+            if (r == BeginResult::Wait) {
+                st.waiting = true;
+                st.requestedAt = std::chrono::steady_clock::now();
+                st.began = st.requestedAt;
+                return true;
+            }
+            st.data->fileData.reset();
+            st.data->availableFrames = 0;
+            st.data->status = FileData::Status::Preloaded;
+        }
+    }
+    return false;
+}
+
+// Decode up to `target` frames, within the budget. Returns false when the budget stopped it. With `mayTakeFromOlder`,
+// a file that needs memory to keep playing takes it from the file that has been playing longest, as voice stealing
+// would: when memory runs short, the oldest notes end (quickly faded) and new notes still sound in full.
+bool sfz::FilePool::streamDecodeTo(GentleStream& st, size_t target, bool mayTakeFromOlder) noexcept
+{
+    target = std::min(target, st.numFrames);
+    const size_t chunk = static_cast<size_t>(config::fileChunkSize);
+    while (st.out < target) {
+        const size_t want = std::min(chunk, st.numFrames - st.out);
+        const size_t cost = want * st.numChannels * sizeof(float);
+        if (gStreamBytes.load() + cost > gStreamBudget.load() && !streamEvictIdle(cost, &st)
+) {
+            if (mayTakeFromOlder)
+                streamTakeFromOldest(cost, 0, st);
+            gStarved++;
+            return false;
+        }
+        const size_t got = static_cast<size_t>(st.reader->readNextBlock(st.block.data(), want));
+        if (got == 0) {          // shorter than announced: end here
+            st.numFrames = st.out;
+            break;
+        }
+        FileAudioBuffer& fd = st.data->fileData;
+        for (unsigned c = 0; c < st.numChannels; ++c) {
+            float* dst = fd.getSpan(c).data() + st.out;
+            for (size_t i = 0; i < got; ++i)
+                dst[i] = st.block[i * st.numChannels + c];
+        }
+        const size_t gotBytes = got * st.numChannels * sizeof(float);
+        st.bytes += gotBytes;
+        gStreamBytes += gotBytes;
+        st.out += got;
+        st.data->availableFrames.store(st.out);   // publish after the frames are written
+    }
+    if (st.out >= st.numFrames)
+        st.data->status = FileData::Status::Done;
+    return true;
+}
+
+// Give a file's decoded memory back. Voices then read the preloaded start again (as upstream's garbage collector
+// leaves an idle file). If a render block may be reading the data right now, wait until it has finished.
+void sfz::FilePool::streamFree(GentleStream& st, bool readersMayExist) noexcept
+{
+    FileData& fd = *st.data;
+    fd.availableFrames.store(0);
+    if (readersMayExist) {
+        const unsigned epoch = renderEpoch.load();
+        if (epoch & 1) {
+            for (int i = 0; i < 2000 && renderEpoch.load() == epoch; ++i)   // at most ~2 s; one block takes ~3 ms
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+    fd.fileData.reset();
+    gStreamBytes -= st.bytes;
+    gReserved -= st.reserved;
+    st.bytes = 0;
+    st.reserved = 0;
+    st.out = 0;
+    st.reader.reset();
+    fd.readHead = 0;
+    fd.status = FileData::Status::Preloaded;
+}
+
+// Free idle files, the longest idle first, until `needBytes` more fit in the budget.
+bool sfz::FilePool::streamEvictIdle(size_t needBytes, const GentleStream* keep, size_t needReserve) noexcept
+{
+    for (;;) {
+        if (gStreamBytes.load() + needBytes <= gStreamBudget.load() && gReserved.load() + needReserve <= reserveLimit())
+            return true;
+        GentleStream* oldest = nullptr;
+        for (auto& s : streams)
+            if (s.get() != keep && s->data && s->idle && !s->waiting && s->reserved > 0 && s->data->readerCount.load() == 0
+                && (!oldest || s->idleSince < oldest->idleSince))
+                oldest = s.get();
+        if (!oldest)
+            return false;
+        streamFree(*oldest, true);
+        if (!streamClaimAgain(*oldest))
+            oldest->data = nullptr;   // removed at the end of the tick
+    }
+}
+
+struct sfz::FilePool::Playing {
+    GentleStream* st;
+    size_t head;      // frames: the furthest reader, at least the preloaded start
+    double margin;    // decoded frames ahead of it (negative: behind)
+};
+
+// Make room by retiring the files that have played longest (and began before `forStream`): their voices fade out over
+// a few milliseconds, then the next ticks free them, so this always leaves the caller waiting a little (its lookahead,
+// or for a new file its preloaded start, covers the wait).
+void sfz::FilePool::streamTakeFromOldest(size_t needBytes, size_t needReserve, const GentleStream& forStream) noexcept
+{
+    size_t retiringBytes = 0, retiringReserve = 0;
+    for (auto& s : streams)
+        if (s->data && s->retiring) {
+            retiringBytes += s->bytes;
+            retiringReserve += s->reserved;
+        }
+    const auto short_ = [&] {
+        const size_t bytes = gStreamBytes.load(), reserved = gReserved.load();
+        return bytes - std::min(retiringBytes, bytes) + needBytes > gStreamBudget.load()
+            || reserved - std::min(retiringReserve, reserved) + needReserve > reserveLimit();
+    };
+    while (short_()) {
+        GentleStream* oldest = nullptr;
+        for (auto& s : streams)
+            if (s.get() != &forStream && s->data && !s->retiring && !s->waiting && s->reserved > 0
+                && s->began < forStream.began && (!oldest || s->began < oldest->began))
+                oldest = s.get();
+        if (!oldest)
+            return;
+        oldest->retiring = true;
+        oldest->retiredAt = std::chrono::steady_clock::now();
+        oldest->data->retireEpoch.fetch_add(1);
+        retiringBytes += oldest->bytes;
+        retiringReserve += oldest->reserved;
+        gTaken++;
+    }
+}
+
+// Free retiring files whose voices have faded (or after a short grace). Their files stream again on a new note.
+void sfz::FilePool::streamFreeRetired() noexcept
+{
+    const auto now = std::chrono::steady_clock::now();
+    for (auto& s : streams) {
+        if (!s->data || !s->retiring)
+            continue;
+        if (s->data->readerCount.load() > 0 && now - s->retiredAt < std::chrono::milliseconds(80))
+            continue;
+        streamFree(*s, true);
+        s->retiring = false;
+        if (!streamClaimAgain(*s))   // a note that started on it meanwhile keeps it streaming
+            s->data = nullptr;       // removed at the end of the tick
+    }
+}
+
+void sfz::FilePool::streamerTick() noexcept
+{
+    streamFreeRetired();
+
+    // new files wait in `streams` until they have their memory
+    const auto now = std::chrono::steady_clock::now();
+    for (auto& request : streamRequests) {
+        auto st = absl::make_unique<GentleStream>();
+        st->id = request.id;
+        st->data = request.data;
+        st->waiting = true;
+        st->requestedAt = now;
+        st->began = now;   // the newest: older files retire for it, not the other way round
+        streams.push_back(std::move(st));
+    }
+    streamRequests.clear();
+
+    for (auto& st : streams) {
+        if (!st->data)
+            continue;
+        if (st->id.expired()) {   // its region is gone (the instrument changed)
+            st->data = nullptr;
+            continue;
+        }
+        if (st->waiting) {
+            const bool gaveUp = st->data->readerCount.load() == 0 || now - st->requestedAt > std::chrono::milliseconds(kWaitMs);
+            const BeginResult r = gaveUp ? BeginResult::Failed : streamBegin(*st);
+            if (r == BeginResult::Ok || r == BeginResult::Wait)
+                continue;
+            st->reader.reset();
+            st->data->fileData.reset();
+            st->data->availableFrames = 0;
+            st->data->status = FileData::Status::Preloaded;   // its notes play their preloaded start
+            st->data = nullptr;
+            continue;
+        }
+        if (st->retiring)
+            continue;
+        const bool readers = st->data->readerCount.load() > 0;
+        if (readers)
+            st->idle = false;
+        else if (!st->idle) {
+            st->idle = true;
+            st->idleSince = now;
+        } else if (now - st->idleSince > std::chrono::seconds(kIdleSeconds)) {
+            streamFree(*st, true);
+            if (!streamClaimAgain(*st))
+                st->data = nullptr;
+        }
+    }
+
+    // two passes: everyone a little ahead first, the most starved first; then the full lookahead.
+    // Each stream's read position is read once: voices move it while this runs, and sorting on live values would
+    // give std::sort an inconsistent order (it then reads past the array's ends).
+    std::vector<Playing>& playing = playingScratch;
+    playing.clear();
+    for (auto& st : streams)
+        if (st->data && !st->idle && !st->retiring && !st->waiting && st->out < st->numFrames) {
+            const size_t head = std::max<size_t>(st->data->readHead.load(), st->data->preloadedData.getNumFrames());
+            playing.push_back({ st.get(), head, double(st->out) - double(head) });
+        }
+    std::sort(playing.begin(), playing.end(), [](const Playing& a, const Playing& b) { return a.margin < b.margin; });
+    for (auto& p : playing)   // (a file freed to make room for another has data == nullptr from then on)
+        if (p.st->data)
+            streamDecodeTo(*p.st, p.head + static_cast<size_t>(kUrgentSeconds * p.st->rate), true);
+    for (auto& p : playing)
+        if (p.st->data)
+            streamDecodeTo(*p.st, p.head + static_cast<size_t>(kAheadSeconds * p.st->rate), false);
+
+    streams.erase(std::remove_if(streams.begin(), streams.end(),
+                                 [](const std::unique_ptr<GentleStream>& s) { return s->data == nullptr; }),
+                  streams.end());
+}
+
+void sfz::FilePool::streamerJob() noexcept
+{
+    // A normal thread, as upstream's loaders: a real-time one would run ahead of the MPC's own non-real-time work
+    // (its disk streaming, the screen) for as long as a burst of decoding lasts. Real-time audio threads are ahead of
+    // it either way, and the lookahead (over a second) absorbs scheduling delays.
+    std::unique_lock<std::mutex> lock { streamMutex };
+    while (streamRun) {
+        streamWake.wait_for(lock, std::chrono::milliseconds(kTickMs));
+        if (!streamRun)
+            break;
+        streamerTick();
+        gStreamCount = static_cast<unsigned>(streams.size());
+    }
+}
+
+// Called while nothing renders (loading, clearing, preload changes): drop every stream and reset its file.
+void sfz::FilePool::stopAllStreams() noexcept
+{
+    std::lock_guard<std::mutex> lock { streamMutex };
+    for (auto& st : streams)
+        if (st->data && !st->id.expired())
+            streamFree(*st, false);
+        else if (st->data) {   // its file is gone: only the accounting is left
+            gStreamBytes -= st->bytes;
+            gReserved -= st->reserved;
+        }
+    streams.clear();
+    for (auto& request : streamRequests)
+        if (!request.id.expired())
+            request.data->status = FileData::Status::Preloaded;
+    streamRequests.clear();
+}
+
+// C hooks for the engine adapter (src/sfizz_mpc.cpp)
 extern "C" void sfizz_mpc_set_gentle_loading(int gentle) { sfz::FilePool::setGentleLoading(gentle != 0); }
+extern "C" void sfizz_mpc_set_stream_budget(unsigned long long bytes) { sfz::FilePool::setStreamBudget(static_cast<size_t>(bytes)); }
+extern "C" void sfizz_mpc_stream_stats(unsigned long long* bytes, unsigned long long* budget, unsigned* streams,
+                                       unsigned* starved, unsigned* failed)
+{
+    const auto s = sfz::FilePool::streamStats();
+    *bytes = s.bytes; *budget = s.budget; *streams = s.streams; *starved = s.starved; *failed = s.failed;
+}
+extern "C" unsigned sfizz_mpc_underruns() { return gUnderruns.load(); }
+extern "C" unsigned sfizz_mpc_streams_taken() { return gTaken.load(); }

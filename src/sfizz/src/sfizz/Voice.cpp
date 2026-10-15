@@ -13,6 +13,7 @@
 #include "FilterPool.h"
 #include "FlexEnvelope.h"
 #include "Interpolators.h"
+#include <simde/x86/sse3.h>   // [sfizz for MPC OS] hadd, for the stereo Sinc 8
 #include "LFO.h"
 #include "MathHelpers.h"
 #include "ModifierHelpers.h"
@@ -259,6 +260,7 @@ struct Voice::Impl
     } loop_;
 
     FileDataHolder currentPromise_;
+    unsigned fileEpoch_ { 0 };   // [sfizz for MPC OS] the file's retireEpoch when this voice started
 
     int samplesPerBlock_ { config::defaultSamplesPerBlock };
     float sampleRate_ { config::defaultSampleRate };
@@ -483,6 +485,7 @@ bool Voice::startVoice(Layer* layer, int delay, const TriggerEvent& event) noexc
             impl.switchState(State::cleanMeUp);
             return false;
         }
+        impl.fileEpoch_ = impl.currentPromise_->retireEpoch.load(std::memory_order_relaxed);
         impl.updateLoopInformation();
         impl.speedRatio_ = static_cast<float>(impl.currentPromise_->information.sampleRate / impl.sampleRate_);
         impl.sourcePosition_ = sampleOffset(region, midiState);
@@ -1075,6 +1078,11 @@ void Voice::Impl::fillWithData(AudioSpan<float> buffer) noexcept
         return;
     }
 
+    // [sfizz for MPC OS] memory ran short and this file has played longest: fade out (as voice stealing does) while
+    // its data is still there, rather than run off its end
+    if (currentPromise_->retireEpoch.load(std::memory_order_relaxed) != fileEpoch_ && !offed_)
+        off(0, true);
+
     auto source = currentPromise_->getData();
     if (source.getNumFrames() == 0) {
         DBG("[Voice] Empty source in promise");
@@ -1100,8 +1108,15 @@ void Voice::Impl::fillWithData(AudioSpan<float> buffer) noexcept
         pitchEnvelope(pitch);
 
         float baseRatio = pitchRatio_ * speedRatio_;
-        for (size_t i = 0; i < numSamples; ++i)
-            (*jumps)[i] = baseRatio * centsFactor(pitch[i]);
+        // [sfizz for MPC OS] a block whose pitch doesn't move (the usual case) needs one pow(), not one per sample
+        bool varies = false;   // no early exit: the compiler vectorizes it
+        for (size_t i = 1; i < numSamples; ++i)
+            varies |= pitch[i] != pitch[0];
+        if (!varies)
+            fill<float>(*jumps, baseRatio * centsFactor(pitch[0]));
+        else
+            for (size_t i = 0; i < numSamples; ++i)
+                (*jumps)[i] = baseRatio * centsFactor(pitch[i]);
 
         // Take the first sample if the voice just started
         if (age_ == 0)
@@ -1112,6 +1127,9 @@ void Voice::Impl::fillWithData(AudioSpan<float> buffer) noexcept
         sfzInterpolationCast<float>(*jumps, *indices, *coeffs);
         add1<int>(sourcePosition_, *indices);
     }
+
+    // [sfizz for MPC OS] how far this voice reads: the streamer decodes a little ahead of the furthest reader
+    currentPromise_->noteRead(static_cast<size_t>(std::max(0, indices->back())) + 64);
 
     // Update loop characteristics with the current CC state
     updateLoopInformation();
@@ -1214,6 +1232,9 @@ void Voice::Impl::fillWithData(AudioSpan<float> buffer) noexcept
             }
             i++;
         }
+    } else if ((*indices)[0] <= (*indices)[numSamples - 1] && (*indices)[numSamples - 1] < sampleEnd) {
+        // [sfizz for MPC OS] the positions rise through the block and the last is before the end: the loop below would
+        // subtract 0 (no restart yet in this branch) and find nothing, so skip its per-sample work
     } else { // One shots and loops that have released (for loop sustain) or ended (with loop counts)
         for (unsigned i = 0; i < numSamples; ++i) {
             (*indices)[i] -= sampleSize_ * blockRestarts;
@@ -1226,6 +1247,9 @@ void Voice::Impl::fillWithData(AudioSpan<float> buffer) noexcept
                     continue;
                 }
 
+                // [sfizz for MPC OS] the data ran out before the sample's end: streaming fell behind (counted)
+                if (!offed_ && sampleEnd + 1 < min(int(sampleEnd_), int(currentPromise_->information.end)))
+                    FilePool::noteUnderrun();
                 off(int(i), true);
                 fill<int>(indices->subspan(i), sampleEnd);
                 fill<float>(coeffs->subspan(i), 0x1.fffffep-1);
@@ -1356,12 +1380,59 @@ void Voice::Impl::fillWithData(AudioSpan<float> buffer) noexcept
 #endif
 }
 
+// [sfizz for MPC OS] Sinc 8 for stereo sources, from the phase-ordered table (Interpolators.h): the eight
+// coefficients of a frame are interpolated once from two adjacent rows and used for both channels. Same kernel and
+// the same 8191-per-unit resolution as upstream's per-channel lookups; only the summation order differs.
+template <bool Adding>
+static void fillSinc8Stereo(const float* leftSource, const float* rightSource, float* left, float* right,
+                            const int* ind, const int* indEnd, const float* coeff, const float* addingGain) noexcept
+{
+    const float* rows = sinc8PolyphaseTable();
+    while (ind < indEnd) {
+        const float pos = *coeff * float(kSinc8Phases);
+        int k = static_cast<int>(pos);
+        k = k < 0 ? 0 : (k > kSinc8Phases - 1 ? kSinc8Phases - 1 : k);
+        const simde__m128 f = simde_mm_set1_ps(pos - float(k));
+        const float* r0 = rows + 8 * k;
+        const simde__m128 a0 = simde_mm_load_ps(r0), a1 = simde_mm_load_ps(r0 + 4);
+        const simde__m128 b0 = simde_mm_load_ps(r0 + 8), b1 = simde_mm_load_ps(r0 + 12);
+        const simde__m128 h0 = simde_mm_add_ps(a0, simde_mm_mul_ps(f, simde_mm_sub_ps(b0, a0)));
+        const simde__m128 h1 = simde_mm_add_ps(a1, simde_mm_mul_ps(f, simde_mm_sub_ps(b1, a1)));
+        const float* l = leftSource + *ind - 3;
+        const float* r = rightSource + *ind - 3;
+        const simde__m128 yl = simde_mm_add_ps(simde_mm_mul_ps(h0, simde_mm_loadu_ps(l)), simde_mm_mul_ps(h1, simde_mm_loadu_ps(l + 4)));
+        const simde__m128 yr = simde_mm_add_ps(simde_mm_mul_ps(h0, simde_mm_loadu_ps(r)), simde_mm_mul_ps(h1, simde_mm_loadu_ps(r + 4)));
+        const simde__m128 pairs = simde_mm_hadd_ps(yl, yr);   // l01 l23 r01 r23
+        alignas(16) float p[4];
+        simde_mm_store_ps(p, pairs);
+        const float leftOutput = p[0] + p[1];
+        const float rightOutput = p[2] + p[3];
+        IF_CONSTEXPR(Adding) {
+            const float g = *addingGain++;
+            *left += g * leftOutput;
+            *right += g * rightOutput;
+        } else {
+            *left = leftOutput;
+            *right = rightOutput;
+        }
+        ++ind; ++coeff; ++left; ++right;
+    }
+}
+
 template <InterpolatorModel M, bool Adding>
 void Voice::Impl::fillInterpolated(
     const AudioSpan<const float>& source, const AudioSpan<float>& dest,
     absl::Span<const int> indices, absl::Span<const float> coeffs,
     absl::Span<const float> addingGains)
 {
+    IF_CONSTEXPR(M == kInterpolatorSinc8) {   // [sfizz for MPC OS]
+        if (source.getNumChannels() == 2 && dest.getNumChannels() >= 2) {
+            fillSinc8Stereo<Adding>(source.getConstSpan(0).data(), source.getConstSpan(1).data(),
+                                    dest.getChannel(0), dest.getChannel(1), indices.data(),
+                                    indices.data() + indices.size(), coeffs.data(), addingGains.data());
+            return;
+        }
+    }
     auto* ind = indices.data();
     auto* coeff = coeffs.data();
     auto* addingGain = addingGains.data();

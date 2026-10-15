@@ -3,21 +3,67 @@
 - Upstream: https://github.com/sfztools/sfizz, tag `1.2.3`, commit `4e70dc0bef53b41f2853ed46e26f5911114c92d0`, with its
   submodules (abseil-cpp, filesystem, simde, st_audiofile and its dr_libs / libaiff / wavpack) at the commits that tag pins.
 - Licence: BSD-2-Clause (`src/sfizz/LICENSE`); third-party parts keep their own licences in `src/sfizz/external/*`.
-- Local changes: one, `patches/0001-gentle-background-loading.patch` (`src/sfizz/FilePool.h` and `.cpp`, every change
-  marked `[sfizz for MPC OS]`). Upstream streams the whole rest of a sample file on every note-on, at once, on a
-  real-time-priority (SCHED_RR) thread; on the RK3288 each key hit spiked the CPU to 100%. With gentle loading (the engine
-  turns it on in `create()`), a note's first second loads in the pool job at normal priority, then one ordinary-priority
-  thread per sfizz instance tops each playing file up every 15 ms, at most 2× real time ahead, and lets go of a file
-  (back to its preloaded start, as sfizz's own garbage collector does) once no voice reads it. `emptyFileLoadingQueues()`,
-  a no-op upstream, now stops and waits for those streams before files are cleared. The audio is bit-identical; measured
-  on x86 (Salamander Grand Piano V3, chords in real time): worst 50 ms of loader CPU 98% → 18% of a core, total −10%.
-  `sfizz_mpc_set_gentle_loading(0)` restores upstream behaviour.
-- Removed only what the build never uses, to keep the repo small: `tests/`,
-  `benchmarks/`, `demos/`, `devtools/`, `Doxyfile`, `external/simde/test/` and its Docker/Meson files, and abseil's
-  `*_test.cc` / `*_benchmark.cc` files.
-- Re-vendor: copy the new tag's tree (with submodules) over `src/sfizz/`, remove the same folders, re-apply the patch
-  (`patch -p1 -d src/sfizz < patches/0001-gentle-background-loading.patch`, fixing it up if FilePool moved on), rebuild, and rerun
-  `tools/test_port.sh vst.json` and the ARM checks in TESTING.md.
+- Removed only what the build never uses, to keep the repo small: `tests/`, `benchmarks/`, `demos/`, `devtools/`,
+  `Doxyfile`, `external/simde/test/` and its Docker/Meson files, and abseil's `*_test.cc` / `*_benchmark.cc` files.
+
+## Local changes
+All in `src/sfizz/src/`, every one marked `[sfizz for MPC OS]` in the code, and all in one patch against the upstream
+tag: `patches/0001-sfizz-for-mpc-os.patch` (`patch -p1 -d src/sfizz < patches/0001-sfizz-for-mpc-os.patch` on a clean
+1.2.3 tree reproduces `src/sfizz/src` exactly).
+
+### Sample streaming (`FilePool.h/.cpp`, `Synth.cpp`, `Voice.cpp`)
+Upstream decodes the whole rest of a sample file on every note-on, at once, on threads it raises to real-time priority
+(SCHED_RR), and keeps it until 5 s after the last note: on the RK3288 each key hit spiked the CPU to 100%, and memory had
+no limit (a few seconds of chords with Salamander Grand Piano took 200+ MB more). With gentle loading (the engine turns it on
+in `create()`; `sfizz_mpc_set_gentle_loading(0)` restores upstream behaviour):
+- One normal-priority streamer thread per instance decodes each playing file a little ahead of its furthest voice: first
+  every file to 0.35 s ahead (the most behind first), then to 1.25 s ahead, every 8 ms. Voices report how far they read
+  (`FileData::noteRead`).
+- A budget caps decoded sample memory across all instances (`sfizz_mpc_set_stream_budget`; the engine sets a third of
+  MemAvailable, 48 to 384 MB), and the address space reserved for whole decoded files is capped too (3 × budget,
+  256 to 768 MB, for a 32-bit process). Files no voice reads are kept 5 s, then freed; when memory is short the longest
+  idle go first. If that isn't enough, the file that has played longest is retired: its voices fade out over a few ms (as
+  voice stealing does) and its memory goes to the new notes. A new file waits up to 150 ms for room while its preloaded
+  start plays.
+- Freeing waits until no render block can be reading (`renderBlockBegin/End` around `Synth::renderBlock`).
+  `emptyFileLoadingQueues()` (a no-op upstream) stops every stream before files are cleared.
+- Allocation failure (`bad_alloc`) is caught where upstream would terminate the host.
+- Counters for testing: `sfizz_mpc_stream_stats`, `sfizz_mpc_underruns` (notes cut because their data wasn't decoded in
+  time; upstream cuts them the same way), `sfizz_mpc_streams_taken`.
+
+### Memory (`Buffer.h`)
+Buffers of 256 kB and more (decoded files) are mapped directly (`mmap`) instead of `calloc`. From the heap, glibc clears
+every page of a reused block (CPU, and the whole file committed at once) and freed blocks stay in the process, so memory
+only grew as files streamed in and out (x86, 8 s of chords: peak 479 MB → 231 MB, of which 163 MB decoded audio).
+
+### CPU (no change to the sound)
+- `simd/HelpersNEON.*`, `SIMDHelpers.cpp`: NEON versions of gain, multiply-add, multiply-multiply, add and subtract,
+  dispatched on ARM (upstream's NEON table was empty: ARM ran the scalar loops, which the compiler won't vectorize for the
+  in-place calls sfizz makes).
+- `Panning.cpp`: pan and width with a constant envelope (the usual case) use one coefficient pair per block; the result
+  reproduces upstream's NEON/scalar split exactly.
+- `Voice.cpp`: one `pow` per block when the pitch doesn't move; skips the per-sample end-of-sample scan when the block
+  can't reach the end; Sinc 8 on stereo samples reads a polyphase table (`Interpolators.*`, 8191 phases as upstream)
+  for both channels at once.
+- `ADSREnvelope.cpp`: a settled sustain segment is filled in one go.
+- `utility/Timing.h`: `ScopedTiming` is a no-op. Its clock reads (about ten per voice per block) only fed sfizz's
+  statistics and log files.
+
+Measured on ARM (Cortex-A7 code under QEMU, instruction counts, Salamander Grand Piano V3, 16 held voices, Sinc 8):
+55 K instructions per voice per 128-frame block upstream, 22 K now. Bit-identical to upstream (a test instrument with
+pitch-bend and pan sweeps; every quality on x86, Linear to Sinc 12 on ARM) except Sinc 8, which differs by at most 1e-7
+(−130 dB, summation order).
+
+### Robustness
+- `ScopedFTZ.cpp`: the ARM destructor wrote the saved FPSCR with `vmrs` (a read) instead of `vmsr`, so flush-to-zero was
+  never restored for the host. Fixed (and `msr fpcr` on aarch64).
+- `src/CMakeLists.txt`: release asserts are off unless `SFIZZ_RELEASE_ASSERTS` is set. Upstream keeps them on in release
+  builds, and a failed one executes a breakpoint (SIGTRAP), which kills MPC.
+
+## Re-vendor
+Copy the new tag's tree (with submodules) over `src/sfizz/`, remove the same folders, apply the patch (fixing it up where
+upstream moved on), rebuild, and rerun `tools/test_port.sh vst.json`, the ARM checks and the offline measurements in
+TESTING.md.
 
 The LV2 plugin and editor (sfztools/sfizz-ui) are not vendored. The MPC skin was drawn to match the editor's 1.2.3 layout
 and Default theme; `art/logo_text_shaded@2x.png`, `art/background@2x.png` and `fonts/Roboto-Regular.ttf` are copied from

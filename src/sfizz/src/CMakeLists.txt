@@ -231,7 +231,9 @@ target_include_directories(sfizz_parser PUBLIC sfizz)
 target_link_libraries(sfizz_parser
     PUBLIC sfizz::filesystem sfizz::simde absl::strings
     PRIVATE absl::flat_hash_map)
-sfizz_enable_release_asserts(sfizz_parser)
+if(SFIZZ_RELEASE_ASSERTS)   # [sfizz for MPC OS] was unconditional: a failed check trapped (killed the host)
+    sfizz_enable_release_asserts(sfizz_parser)
+endif()
 
 # OSC messaging library
 set(SFIZZ_MESSAGING_HEADERS
@@ -248,7 +250,9 @@ target_sources(sfizz_messaging PRIVATE
     ${SFIZZ_MESSAGING_HEADERS} ${SFIZZ_MESSAGING_SOURCES})
 target_include_directories(sfizz_messaging PUBLIC ".")
 target_link_libraries(sfizz_messaging PUBLIC absl::strings)
-sfizz_enable_release_asserts(sfizz_messaging)
+if(SFIZZ_RELEASE_ASSERTS)   # [sfizz for MPC OS] was unconditional: a failed check trapped (killed the host)
+    sfizz_enable_release_asserts(sfizz_messaging)
+endif()
 
 
 # Import library
@@ -300,7 +304,9 @@ if(SFIZZ_USE_SNDFILE)
     target_compile_definitions(sfizz_internal PUBLIC "SFIZZ_USE_SNDFILE=1")
     target_link_libraries(sfizz_internal PUBLIC st_audiofile)
 endif()
-sfizz_enable_release_asserts(sfizz_internal)
+if(SFIZZ_RELEASE_ASSERTS)   # [sfizz for MPC OS] was unconditional: a failed check trapped (killed the host)
+    sfizz_enable_release_asserts(sfizz_internal)
+endif()
 
 if(SFIZZ_IMPLEMENT_CXX17_ALIGNED_NEW_SUPPORT)
     target_compile_definitions(sfizz_internal PRIVATE "SFIZZ_IMPLEMENT_CXX17_ALIGNED_NEW_SUPPORT=1")

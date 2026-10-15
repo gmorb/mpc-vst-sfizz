@@ -1091,6 +1091,11 @@ void Synth::setSampleRate(float sampleRate) noexcept
 void Synth::renderBlock(AudioSpan<float> buffer) noexcept
 {
     Impl& impl = *impl_;
+    struct RenderEpoch {   // [sfizz for MPC OS] the file pool frees streamed memory only between blocks
+        FilePool& pool;
+        explicit RenderEpoch(FilePool& p) noexcept : pool(p) { pool.renderBlockBegin(); }
+        ~RenderEpoch() { pool.renderBlockEnd(); }
+    } renderEpoch { impl.resources_.getFilePool() };
     ScopedFTZ ftz;
     auto& callbackBreakdown = impl.callbackBreakdown_;
     impl.resetCallbackBreakdown();

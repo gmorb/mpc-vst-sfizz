@@ -47,8 +47,115 @@ inline void tickPan(const float* pan, float* leftBuffer, float* rightBuffer)
     *rightBuffer *= panLookup(1 - p);
 }
 
+// ---- [sfizz for MPC OS] constant-value blocks -------------------------------------------------------------------
+// A pan or width that doesn't move during the block (the usual case) gets its coefficients once instead of per sample.
+// Each sample is still multiplied by exactly the coefficient the per-sample code would have looked up for it (the
+// NEON blocks and the scalar edges use slightly different index rounding, and both are reproduced), with the same
+// arithmetic, so the output is unchanged.
+static bool isConstant(const float* values, unsigned size) noexcept
+{
+    bool varies = false;   // no early exit: the compiler vectorizes it
+    for (unsigned i = 1; i < size; ++i)
+        varies |= values[i] != values[0];
+    return !varies;
+}
+
+#if SFIZZ_HAVE_NEON
+static inline uint32_t neonPanIndex(float value) noexcept   // the NEON blocks' index, one lane
+{
+    float32x4_t v = vdupq_n_f32(value);
+    v = vaddq_f32(v, vdupq_n_f32(1.0f));
+    v = vmulq_n_f32(v, 0.5f * panSize);
+    v = vaddq_f32(v, vdupq_n_f32(0.5f));
+    uint32x4_t idx = vcvtq_u32_f32(v);
+    idx = vminq_u32(idx, vdupq_n_u32(panSize - 1));
+    idx = vmaxq_u32(idx, vdupq_n_u32(0));
+    return vgetq_lane_u32(idx, 0);
+}
+#endif
+
+static void panConstant(float value, float* leftBuffer, float* rightBuffer, unsigned size, const float* envelope) noexcept
+{
+    float* const end = leftBuffer + size;
+    float p = (value + 1.0f) * 0.5f;
+    p = clamp(p, 0.0f, 1.0f);
+    const float scalarLeft = panLookup(p);
+    const float scalarRight = panLookup(1 - p);
+#if SFIZZ_HAVE_NEON
+    const auto* firstAligned = prevAligned<ByteAlignment>(envelope + TypeAlignment - 1);
+    const auto* sentinel = envelope + size;
+    if (willAlign<ByteAlignment>(envelope, leftBuffer, rightBuffer) && (firstAligned < sentinel)) {
+        while (envelope < firstAligned) {
+            *leftBuffer *= scalarLeft;
+            *rightBuffer *= scalarRight;
+            incrementAll(envelope, leftBuffer, rightBuffer);
+        }
+        const uint32_t idx = neonPanIndex(value);
+        const float32x4_t mmLeft = vdupq_n_f32(panData[idx]);
+        const float32x4_t mmRight = vdupq_n_f32(panData[panSize - idx - 1]);
+        const auto* lastAligned = prevAligned<ByteAlignment>(sentinel);
+        while (envelope < lastAligned) {
+            vst1q_f32(leftBuffer, vmulq_f32(vld1q_f32(leftBuffer), mmLeft));
+            vst1q_f32(rightBuffer, vmulq_f32(vld1q_f32(rightBuffer), mmRight));
+            incrementAll<TypeAlignment>(envelope, leftBuffer, rightBuffer);
+        }
+    }
+#else
+    (void)envelope;
+#endif
+    while (leftBuffer < end) {
+        *leftBuffer++ *= scalarLeft;
+        *rightBuffer++ *= scalarRight;
+    }
+}
+
+static void widthConstant(float value, float* leftBuffer, float* rightBuffer, unsigned size, const float* envelope) noexcept
+{
+    float* const end = leftBuffer + size;
+    float w = (value + 1.0f) * 0.5f;
+    w = clamp(w, 0.0f, 1.0f);
+    const auto coeff1 = panLookup(w);
+    const auto coeff2 = panLookup(1 - w);
+#if SFIZZ_HAVE_NEON
+    const auto* firstAligned = prevAligned<ByteAlignment>(envelope + TypeAlignment - 1);
+    const auto* sentinel = envelope + size;
+    if (willAlign<ByteAlignment>(envelope, leftBuffer, rightBuffer) && firstAligned < sentinel) {
+        while (envelope < firstAligned) {
+            const auto l = *leftBuffer;
+            const auto r = *rightBuffer;
+            *leftBuffer = l * coeff2 + r * coeff1;
+            *rightBuffer = l * coeff1 + r * coeff2;
+            incrementAll(envelope, leftBuffer, rightBuffer);
+        }
+        const uint32_t idx = neonPanIndex(value);
+        const float32x4_t mmCoeff1 = vdupq_n_f32(panData[idx]);
+        const float32x4_t mmCoeff2 = vdupq_n_f32(panData[panSize - idx - 1]);
+        const auto* lastAligned = prevAligned<ByteAlignment>(sentinel);
+        while (envelope < lastAligned) {
+            float32x4_t mmLeft = vld1q_f32(leftBuffer);
+            float32x4_t mmRight = vld1q_f32(rightBuffer);
+            vst1q_f32(leftBuffer, vaddq_f32(vmulq_f32(mmCoeff2, mmLeft), vmulq_f32(mmCoeff1, mmRight)));
+            vst1q_f32(rightBuffer, vaddq_f32(vmulq_f32(mmCoeff1, mmLeft), vmulq_f32(mmCoeff2, mmRight)));
+            incrementAll<TypeAlignment>(envelope, leftBuffer, rightBuffer);
+        }
+    }
+#else
+    (void)envelope;
+#endif
+    while (leftBuffer < end) {
+        const auto l = *leftBuffer;
+        const auto r = *rightBuffer;
+        *leftBuffer++ = l * coeff2 + r * coeff1;
+        *rightBuffer++ = l * coeff1 + r * coeff2;
+    }
+}
+
 void pan(const float* panEnvelope, float* leftBuffer, float* rightBuffer, unsigned size) noexcept
 {
+    if (size > 0 && isConstant(panEnvelope, size)) {   // [sfizz for MPC OS]
+        panConstant(panEnvelope[0], leftBuffer, rightBuffer, size, panEnvelope);
+        return;
+    }
     const auto* sentinel = panEnvelope + size;
 
 #if SFIZZ_HAVE_NEON
@@ -112,6 +219,10 @@ inline void tickWidth(const float* width, float* leftBuffer, float* rightBuffer)
 
 void width(const float* widthEnvelope, float* leftBuffer, float* rightBuffer, unsigned size) noexcept
 {
+    if (size > 0 && isConstant(widthEnvelope, size)) {   // [sfizz for MPC OS]
+        widthConstant(widthEnvelope[0], leftBuffer, rightBuffer, size, widthEnvelope);
+        return;
+    }
     const auto* sentinel = widthEnvelope + size;
 
 #if SFIZZ_HAVE_NEON

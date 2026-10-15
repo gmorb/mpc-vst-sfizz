@@ -47,6 +47,13 @@ enum InterpolatorModel : int {
  */
 void initializeInterpolators();
 
+// [sfizz for MPC OS] The Sinc 8 kernel table, laid out by phase: row k (0..kSinc8Phases) holds the eight taps for a
+// fractional position of k / kSinc8Phases, row-major, 16-byte aligned. It is the same table upstream's Sinc 8 reads
+// (its 8191 entries per unit), only rearranged, so a frame's coefficients come from two adjacent rows (64 bytes),
+// computed once for both channels. Built by initializeInterpolators().
+constexpr int kSinc8Phases = 8191;
+const float* sinc8PolyphaseTable() noexcept;
+
 /**
  * @brief Interpolate from a vector of values
  *

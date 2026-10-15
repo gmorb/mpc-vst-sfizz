@@ -34,6 +34,9 @@
 #include <algorithm>
 #include <utility>
 #include <atomic>
+#if defined(__linux__)
+#include <sys/mman.h>
+#endif
 
 #ifdef DEBUG
 #include <iostream>
@@ -161,9 +164,11 @@ public:
         Type* oldData = paddedData.get();
         Type* oldNormalData = normalData;
         std::size_t oldSize = alignedSize;
+        const std::size_t oldMapped = paddedData.get_deleter().mapped;
 
         std::size_t tempSize = newSize + 2 * AlignmentMask; // To ensure that we have leeway at the beginning and at the end
-        Type* newData = reinterpret_cast<Type*>(std::calloc(tempSize, sizeof(value_type)));
+        std::size_t newMapped = 0;
+        Type* newData = reinterpret_cast<Type*>(rawAllocate(tempSize * sizeof(value_type), newMapped));
         if (newData == nullptr) {
             return false;
         }
@@ -177,6 +182,7 @@ public:
         alignedSize = newSize;
         paddedData.release(); // realloc has invalidated the old pointer
         paddedData.reset(static_cast<pointer>(newData));
+        paddedData.get_deleter().mapped = newMapped;
         normalData = static_cast<pointer>(align(Alignment, alignedSize, newData, tempSize));
         normalEnd = normalData + alignedSize;
         std::size_t endMisalignment = (alignedSize & TypeAlignmentMask);
@@ -185,8 +191,9 @@ public:
         else
             _alignedEnd = normalEnd;
 
-        std::memcpy(normalData, oldNormalData, std::min(newSize, oldSize) * sizeof(Type));
-        std::free(oldData);
+        if (oldNormalData != nullptr && oldSize > 0)
+            std::memcpy(normalData, oldNormalData, std::min(newSize, oldSize) * sizeof(Type));
+        rawFree(oldData, oldMapped);
 
         return true;
     }
@@ -303,6 +310,7 @@ private:
         largerSize = 0;
         alignedSize = 0;
         paddedData.reset();
+        paddedData.get_deleter().mapped = 0;
         normalData = nullptr;
         normalEnd = nullptr;
         _alignedEnd = nullptr;
@@ -326,8 +334,41 @@ private:
         return reinterpret_cast<void *>(aligned);
     }
 
+    // [sfizz for MPC OS] large buffers (decoded sample files) are mapped directly. From the heap, glibc's calloc would
+    // clear every page of a freshly reused block (CPU, and the whole file's memory committed at once), and freed
+    // blocks stay in the process: memory then only grows as files stream in and out. A mapping is zeroed lazily
+    // by the kernel and handed back whole on free.
+    static constexpr std::size_t kMapThreshold { std::size_t(256) << 10 };
+    static void* rawAllocate(std::size_t bytes, std::size_t& mapped) noexcept
+    {
+        mapped = 0;
+#if defined(__linux__)
+        if (bytes >= kMapThreshold) {
+            void* p = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+            if (p == MAP_FAILED)
+                return nullptr;
+            mapped = bytes;
+            return p;
+        }
+#endif
+        return std::calloc(bytes, 1);
+    }
+    static void rawFree(void* p, std::size_t mapped) noexcept
+    {
+        if (p == nullptr)
+            return;
+#if defined(__linux__)
+        if (mapped > 0) {
+            ::munmap(p, mapped);
+            return;
+        }
+#endif
+        std::free(p);
+    }
+
     struct deleter {
-        void operator()(void *p) const noexcept { std::free(p); }
+        std::size_t mapped { 0 };
+        void operator()(void *p) const noexcept { rawFree(p, mapped); }
     };
 
     size_type largerSize { 0 };
