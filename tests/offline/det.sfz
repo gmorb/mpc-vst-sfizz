@@ -1,0 +1,7 @@
+// Deterministic test instrument (samples in RAM, so the output doesn't depend on streaming timing). Copy it next to
+// "Salamander Grand Piano V3.sfz" (it uses that library's Samples folder). Pitch-bend and pan sweeps come from cmpd.cpp.
+<control> hint_ram_based=1 set_cc10=64 default_path=Samples/
+<global> pan_oncc10=100 pan_curvecc10=1 amp_veltrack=0 ampeg_release=0.3
+<region> sample=C4v8.flac lokey=50 hikey=70 pitch_keycenter=60
+<region> sample=A0v8.flac lokey=21 hikey=49 pitch_keycenter=33
+<region> sample=C7v8.flac lokey=71 hikey=108 pitch_keycenter=96 width=60 position=-30
