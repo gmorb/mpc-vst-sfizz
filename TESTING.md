@@ -40,6 +40,18 @@ All of the 1.0.0 list again (host test PASSED; `tools/test_arm.sh` with Salamand
    TSan: only reads of up to 4 frames past the decoded end by the interpolator at the very edge (upstream does the same;
    the values read are 0 or the final ones) and sfizz's shared random generator (upstream, harmless).
 
+## Offline (done for 1.0.2, 2026-10-16)
+1. Output vs upstream sfizz 1.2.3 (`det.sfz`, and `det_fused.sfz`, which has no pan modulation and an amplitude CC so it
+   takes the new one-pass paths): bit-identical at every quality on x86 and at Linear, Polynomial, Sinc 12 and Sinc 24
+   on ARM; Sinc 8 as in 1.0.1 (−130 dB) and bit-identical to 1.0.1's output on ARM.
+2. ARM CPU, instructions per voice per block (same method as 1.0.1): Polynomial 19.8 K → 14.4 K, Sinc 8 22.0 K →
+   15.8 K, Sinc 24 75.1 K → 69.7 K.
+3. Chord hammer (x86, 192 MB): 0 notes cut, output identical between real time and unhurried runs; with two CPU hogs on
+   both cores, 1 note cut. ASan/UBSan stress: no errors; TSan: the same two known reports as 1.0.1.
+4. Host test PASSED; `tools/test_arm.sh` with Salamander and `tests/keyswitch.sfz`: loads, plays (same levels as 1.0.1),
+   closes cleanly.
+5. Tried and dropped: skipping voices decayed below −100 dBFS (see `src/VENDORED.md`); on Salamander none ever got there.
+
 ### The offline harnesses (`tests/offline/`)
 Built against `build/libsfizz_x86_all.a` (from `tools/build_x86_test_libs.sh`) on x86, or against the armhf archives in
 `build/sfizz-armhf` (from `build.sh so`) with `-DAB_MAIN -shared` for ARM, run through `abhost.c` under qemu-arm with

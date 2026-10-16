@@ -60,40 +60,40 @@ The host test's `note 60` line may say `warn` (it plays during a voice-count cha
 failure. Look at every preview image, and at a `tools/mock_screen.py` render, after any skin change.
 
 ## Release
-1. Bump `version` in `vst.json` (e.g. 1002 for 1.0.2) and the version below. Update `RELEASE_NOTES.md`.
+1. Bump `version` in `vst.json` (e.g. 1003 for 1.0.3) and the version below. Update `RELEASE_NOTES.md`.
 2. Build and test as above.
 3. Package with the catalog fields (no other way of making the zip):
    ```
    python3 "$MPC_VST/tools/release.py" --so build/sfizz_mpc.so --skin "build/skin/sfztools - VST - sfizz" \
-     --entry build/pluginlist-entry.xml --version 1.0.1 --extra data:sfizz --user-data sfizz/Instruments \
+     --entry build/pluginlist-entry.xml --version 1.0.2 --extra data:sfizz --user-data sfizz/Instruments \
      --repo gmorb/mpc-vst-sfizz --license BSD-2-Clause --id sfizz [--bench build/bench.txt] \
      --about "The sfizz 1.2.3 SFZ sampler (disk streaming, key switches, CC controls, Scala tuning) with a one-page screen modelled on sfizz's own editor." -o dist
-   python3 "$MPC_VST/tools/catalog_check.py" dist/sfizz-1.0.1-mpc-armv7.zip --catalog --expect-id sfizz --expect-repo gmorb/mpc-vst-sfizz
+   python3 "$MPC_VST/tools/catalog_check.py" dist/sfizz-1.0.2-mpc-armv7.zip --catalog --expect-id sfizz --expect-repo gmorb/mpc-vst-sfizz
    ```
-   The check must end `OK: sfizz 1.0.1`.
+   The check must end `OK: sfizz 1.0.2`.
 4. Device smoke test with that exact zip (TESTING.md, "On the device"). Ask before installing on someone's device: it
    restarts MPC. CPU: `"$MPC_VST/tools/bench.sh" build/sfizz_mpc.so <ip> -j | tee build/bench.txt` with a sampled
    instrument; re-package with `--bench` if you ran it.
 5. Tag and publish with `gh` (every claim backed by the command's output):
    ```
-   git tag v1.0.1 && git push origin main v1.0.1
-   gh release create v1.0.1 --repo gmorb/mpc-vst-sfizz --draft --title "sfizz for MPC OS 1.0.1" \
-     --notes-file RELEASE_NOTES.md dist/sfizz-1.0.1-mpc-armv7.zip
-   gh release view v1.0.1 --repo gmorb/mpc-vst-sfizz --json isDraft,assets,url     # check
-   gh release edit v1.0.1 --repo gmorb/mpc-vst-sfizz --draft=false --latest        # only after the device test
+   git tag v1.0.2 && git push origin main v1.0.2
+   gh release create v1.0.2 --repo gmorb/mpc-vst-sfizz --draft --title "sfizz for MPC OS 1.0.2" \
+     --notes-file RELEASE_NOTES.md dist/sfizz-1.0.2-mpc-armv7.zip
+   gh release view v1.0.2 --repo gmorb/mpc-vst-sfizz --json isDraft,assets,url     # check
+   gh release edit v1.0.2 --repo gmorb/mpc-vst-sfizz --draft=false --latest        # only after the device test
    ```
 6. After a device test, add it to `tested.json` (root, default branch), truthfully:
-   `[{"version": "1.0.1", "device": "MPC Live II", "firmware": "3.x.y", "date": "YYYY-MM-DD"}]`.
+   `[{"version": "1.0.2", "device": "MPC Live II", "firmware": "3.x.y", "date": "YYYY-MM-DD"}]`.
 
 ## List it in the catalog (first release only)
 ```
 gh repo fork sd88me/mpc-vst-plugins --clone --remote && cd mpc-vst-plugins && git checkout -b add-sfizz
 cp ../mpc-vst-sfizz/packaging/catalog/sfizz.json catalog/plugins/sfizz.json
 python3 tools/catalog_build.py --check-registry                                  # entry valid
-curl -sI https://raw.githubusercontent.com/gmorb/mpc-vst-sfizz/v1.0.1/docs/screen.png | head -1    # 200
+curl -sI https://raw.githubusercontent.com/gmorb/mpc-vst-sfizz/v1.0.2/docs/screen.png | head -1    # 200
 git add catalog/plugins/sfizz.json && git commit -m "Add sfizz" && git push -u origin add-sfizz
 gh pr create --repo sd88me/mpc-vst-plugins --head gmorb:add-sfizz --title "Add sfizz" \
-  --body "sfizz 1.0.1: the sfizz 1.2.3 SFZ engine for Gen1 MPC / Force. Release: <the real release URL>"
+  --body "sfizz 1.0.2: the sfizz 1.2.3 SFZ engine for Gen1 MPC / Force. Release: <the real release URL>"
 gh pr view --repo sd88me/mpc-vst-plugins --json url,state,number                # check
 ```
 No versions or checksums in the entry: the catalog reads them from the release. Later releases need no PR.
@@ -108,6 +108,12 @@ The screenshot link is pinned to the tag: it must exist in that tag (`docs/scree
 - **Measure ARM CPU as instructions**, not x86 time: `qemu-arm` with the hotblocks plugin (TESTING.md). In 1.0.1 the
   NEON helpers were silently compiled as scalar because `HelpersNEON.cpp` didn't include `SIMDConfig.h`; only the
   disassembly / instruction counts showed it.
+- **`-ffast-math` reassociates across merged stages**: folding two stages' NEON loops into one let the compiler multiply
+  their constant coefficients together first (fewer multiplies, different rounding). `#pragma clang fp reassociate(off)`
+  didn't stop it; an empty `asm` on each stage's result does. Check every merged path against upstream on ARM.
+- **Identity tests must take the path you changed**: `det.sfz` modulates pan, so it never reached the constant-pan paths;
+  `tests/offline/det_fused.sfz` does. Disk-heavy work running beside the real-time hammer test (a compile) caused note
+  cuts that were not the engine's; rerun on a quiet machine before believing a regression.
 - **Parameter 0**: MPC toggles parameter 0 on insert and on every STOP; the kit's wrapper defers host sets of it, which
   breaks stepping tests for an option or whole-number parameter there. Keep a continuous knob (`stretch`) at index 0.
 - **0-127 knobs** (Volume, Pan, CC slots) are continuous knobs with `dynamic_display`, not `"display": "int"`: with int

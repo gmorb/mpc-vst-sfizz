@@ -10,8 +10,8 @@ Requires a modded unit with root access, as every plugin from that project does.
 **Download** the `sfizz-<version>-mpc-armv7.zip` from [Releases](../../releases). **Manual:** [docs/MANUAL.pdf](docs/MANUAL.pdf).
 
 ## Install
-1. Unzip, copy the `sfizz-<version>` folder to the device: `scp -r sfizz-1.0.1 root@<device-ip>:/tmp/`
-2. Run the installer: `ssh root@<device-ip> sh /tmp/sfizz-1.0.1/install.sh` (it stops and restarts MPC: save first).
+1. Unzip, copy the `sfizz-<version>` folder to the device: `scp -r sfizz-1.0.2 root@<device-ip>:/tmp/`
+2. Run the installer: `ssh root@<device-ip> sh /tmp/sfizz-1.0.2/install.sh` (it stops and restarts MPC: save first).
 3. Add **sfizz** to a track from the plugin browser. Tap ⌄ to open an SFZ from an SD card or USB drive.
 
 Requirements: MPC OS 3.x, a Gen1 (32-bit) device, root SSH. The zip's `INSTALL.md` also has the manual steps.
@@ -51,8 +51,8 @@ sfizz normally reads the whole rest of a sample file the moment a key is hit, on
 memory limit: with big piano libraries that spiked the MPC's CPU to 100% on every note, and enough chords could exhaust
 memory. This port streams files a little ahead of each note on a normal-priority thread, within a memory budget (a third
 of the free memory, 48 to 384 MB); when it runs out, the notes that have played longest fade out first. Rendering is
-about 2.5× cheaper per voice on ARM than upstream at Sinc 8 (NEON paths, fewer per-sample computations), with the same
-sound. Details and measurements in `src/VENDORED.md`.
+about 3.5× cheaper per voice on ARM than upstream at Sinc 8 (NEON paths, stages merged into single passes, unused work
+skipped), with the same sound. Details and measurements in `src/VENDORED.md`.
 
 ## Sound quality
 Sample quality defaults to **Sinc 8**. Measured offline it removes about 24 dB of interpolation distortion over sfizz's

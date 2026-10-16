@@ -48,11 +48,23 @@ only grew as files streamed in and out (x86, 8 s of chords: peak 479 MB → 231 
 - `ADSREnvelope.cpp`: a settled sustain segment is filled in one go.
 - `utility/Timing.h`: `ScopedTiming` is a no-op. Its clock reads (about ten per voice per block) only fed sfizz's
   statistics and log files.
+- Since 1.0.2 (`Voice.cpp`, `Panning.*`, `MidiState.cpp`): on ARM, a stereo voice's amplitude, pan, width, position and
+  make-up gain run as one pass over the audio when pan, width and position are constant for the block (modulated or
+  not), and the amplitude envelope's copy and two gains as one pass. Each stage's result is pinned in a register with
+  an empty `asm`, because under `-ffast-math` the compiler otherwise folds the constant coefficients of consecutive
+  stages together, which changes the rounding. Voices skip the power follower unless the voice stealer reads it, and
+  the crossfade stage when the region has no CC crossfades (it multiplied by exactly 1). Sinc 8 sums with NEON pairwise
+  adds instead of an emulated `hadd`. `MidiState::flushEvents` skips the ~650 controller lists that are already flushed.
 
-Measured on ARM (Cortex-A7 code under QEMU, instruction counts, Salamander Grand Piano V3, 16 held voices, Sinc 8):
-55 K instructions per voice per 128-frame block upstream, 22 K now. Bit-identical to upstream (a test instrument with
-pitch-bend and pan sweeps; every quality on x86, Linear to Sinc 12 on ARM) except Sinc 8, which differs by at most 1e-7
-(−130 dB, summation order).
+Measured on ARM (Cortex-A7 code under QEMU, instruction counts, Salamander Grand Piano V3, 16 held voices), per voice per
+128-frame block, upstream → 1.0.1 → 1.0.2: Polynomial 36 K → 19.8 K → 14.4 K, Sinc 8 55 K → 22.0 K → 15.8 K,
+Sinc 24 88 K → 75.1 K → 69.7 K. Bit-identical to upstream (test instruments with pitch-bend and pan sweeps, with and
+without pan and amplitude modulation; every quality on x86, Linear to Sinc 24 on ARM) except Sinc 8, which differs by
+at most 1e-7 (−130 dB, summation order) and is bit-identical to 1.0.1.
+
+Tried and dropped (1.0.2): skipping the audio of voices that have decayed below −100 dBFS. On Salamander no voice ever
+got there: recorded tails reach the recording's noise floor (around −70 to −80 dBFS) and the samples end. Below an
+inaudible threshold there was nothing to gain; above one it would cut real tails.
 
 ### Robustness
 - `ScopedFTZ.cpp`: the ARM destructor wrote the saved FPSCR with `vmrs` (a read) instead of `vmsr`, so flush-to-zero was

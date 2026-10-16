@@ -50,7 +50,7 @@ figcaption { font-size: 8.8pt; color: #5b6164; margin-top: 3pt; }
     <div class="band">
       <img src="../../art/logo_text_shaded@2x.png" alt="sfizz">
       <h1>sfizz for MPC OS</h1>
-      <div class="sub">User manual · version 1.0.1</div>
+      <div class="sub">User manual · version 1.0.2</div>
     </div>
     <figure style="margin-top:14pt"><img src="../screen.png" alt="The sfizz screen on the MPC"></figure>
     <p>The sfizz 1.2.3 SFZ sampler as a native instrument plugin for Gen1 MPC OS hardware, on a one-page screen
@@ -94,9 +94,9 @@ figcaption { font-size: 8.8pt; color: #5b6164; margin-top: 3pt; }
 <h2 style="margin-top:16pt">2. Installing and uninstalling</h2>
 <h3>Scripted install (recommended)</h3>
 <ol>
-  <li>Download <code>sfizz-1.0.1-mpc-armv7.zip</code> from the project's GitHub Releases page and unzip it on your computer.</li>
-  <li>Copy the whole folder to the device:<pre>scp -r sfizz-1.0.1 root@&lt;device-ip&gt;:/tmp/</pre></li>
-  <li>Run the installer:<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.1/install.sh</pre></li>
+  <li>Download <code>sfizz-1.0.2-mpc-armv7.zip</code> from the project's GitHub Releases page and unzip it on your computer.</li>
+  <li>Copy the whole folder to the device:<pre>scp -r sfizz-1.0.2 root@&lt;device-ip&gt;:/tmp/</pre></li>
+  <li>Run the installer:<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.2/install.sh</pre></li>
 </ol>
 <p>The installer checks the device, asks for confirmation, <b>stops MPC</b> (save your project first), copies the plugin
 folder to <code>/sdcard/Synths/sfztools - VST - sfizz/</code>, backs up <code>MPC.settings</code>, adds sfizz to MPC's
@@ -106,7 +106,7 @@ Synths folder (for example on a card). Running it again upgrades in place.</p>
 <p>The zip's <code>INSTALL.md</code> lists the manual steps: copy the plugin folder, stop MPC, back up and edit
 <code>MPC.settings</code>, start MPC.</p>
 <h3>Uninstall</h3>
-<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.1/uninstall.sh</pre>
+<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.2/uninstall.sh</pre>
 <p>This removes the plugin folder and its plugin-list entry, and restarts MPC. SFZ files you put in the plugin's
 <code>sfizz/Instruments</code> folder are kept. Projects that used sfizz load without it.</p>
 
@@ -254,7 +254,7 @@ of the Volume, Pan and Controls knobs. When the project loads, the instrument lo
 <p>The Gen1 MPC's processor is shared by every track and plugin. What costs CPU in sfizz, from most to least:</p>
 <ul>
   <li><b>Voices sounding</b>: sustained piano chords with the pedal down can use dozens. Lower <b>Max</b> if needed.</li>
-  <li><b>Sample quality</b>: per voice, Sinc 8 costs about 10% more than Polynomial, Sinc 24 nearly 4× Polynomial,
+  <li><b>Sample quality</b>: per voice, Sinc 8 costs about 10% more than Polynomial, Sinc 24 nearly 5× Polynomial,
   and the longer filters more still.</li>
   <li><b>Oversampling</b>: more data per voice.</li>
 </ul>

@@ -1,8 +1,18 @@
-# sfizz for MPC OS 1.0.1
+# sfizz for MPC OS 1.0.2
 
-Fixes a crash and the CPU load when playing many keys at once (big piano libraries especially). Same sound.
+About 28% less CPU per voice than 1.0.1, with the same output: bit-identical to 1.0.1 at every sample quality (and to
+sfizz itself at every quality but Sinc 8, as before).
 
-## Changes since 1.0.0
+## Changes since 1.0.1
+- A stereo voice's volume, pan, stereo width and position are applied in one pass over the audio instead of five, and
+  the amplitude envelope's gains in one pass instead of three (ARM).
+- Work nothing used is skipped: per-voice loudness tracking (only one voice-stealing mode reads it), the crossfade stage
+  of regions without CC crossfades, and re-flushing ~650 MIDI controller lists every block that hadn't changed.
+- Sinc 8's final sums use the ARM's pairwise adds.
+- Measured as ARM instructions per voice per block (emulated): Polynomial 19.8 K → 14.4 K, Sinc 8 22.0 K → 15.8 K,
+  Sinc 24 75.1 K → 69.7 K.
+
+## Changes in 1.0.1
 - **Crash fixed**: the sample streamer could read past the end of its own list while many notes were streaming (it sorted
   on positions the audio thread was still moving), which crashed MPC when several keys were played. Also: failed
   allocations no longer end the process, and sfizz's internal checks no longer stop MPC (SIGTRAP) in release builds.
@@ -35,7 +45,7 @@ The [sfizz](https://github.com/sfztools/sfizz) 1.2.3 SFZ sampler as a native ins
 - Root shell access (a modded unit): the installer edits `MPC.settings`.
 
 ## Install
-Copy the unzipped `sfizz-1.0.1` folder to the device and run `sh install.sh` as root (it stops and restarts MPC: save your
+Copy the unzipped `sfizz-1.0.2` folder to the device and run `sh install.sh` as root (it stops and restarts MPC: save your
 project first). Full steps, including a manual install, are in the zip's `INSTALL.md` and in `docs/MANUAL.pdf`.
 
 ## Tested
