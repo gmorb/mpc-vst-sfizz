@@ -15,6 +15,10 @@ parameters and ID on both: projects move between generations.
   when there is CPU to spare. Projects keep the quality they were saved with.
 - **Instruments tile**: sfizz shows as an artwork tile in Sounds › INSTRUMENTS (tap it, then Default) instead of a plain
   folder.
+- **Larger drop-down lists**: the option lists of Max, Preload size, Oversampling, Sample and Oscillator quality, Root key
+  and the tuning presets open with taller rows (46 px, was 40), bigger text (20 px, was about 13) and wider cells.
+- **Standalone zip** for `vstscanner.sh` setups: `sfizz-for-MPC-OS-1.0.4.zip`, the Gen1 plugin as a plain folder with a
+  README for MockbaMod and other firmware, `NOTICE.md` and every component's licence.
 
 # sfizz for MPC OS 1.0.3
 

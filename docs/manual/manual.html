@@ -112,6 +112,22 @@ plugin list and starts MPC again. <code>-y</code> skips the question; <code>-t &
 Synths folder (for example on a card; on Gen2 an internal Synths folder may be read-only, so a card or drive's
 <code>Synths</code> folder may be needed). Running it again upgrades in place. The MPC OS plugin catalog's installers
 (the <code>mpc-store.sh</code> command and the desktop app) pick the right zip for the device by themselves.</p>
+<h3>Standalone install with vstscanner (Gen1)</h3>
+<p>If your device registers plugins with <code>vstscanner.sh</code> from the Force VST plugins distribution (for example
+on MockbaMod), use <code>sfizz-for-MPC-OS-1.0.4.zip</code> instead: the same Gen1 plugin as a plain folder. Example for a
+MockbaMod card mounted at <code>/media/662522</code>:</p>
+<ol>
+  <li>Copy the <code>sfztools - VST - sfizz</code> folder into <code>/media/662522/Synths</code>, next to <code>vstscanner.sh</code>.</li>
+  <li>Point the Instruments tile's Default preset at that folder:
+  <pre>ssh &lt;device-ip&gt; "sed -i 's|%payload-path%|/media/662522/Synths|' \
+  '/media/662522/Synths/sfztools - VST - sfizz/Presets/0000-Default.xpl'"</pre></li>
+  <li>Run the scanner: <pre>ssh &lt;device-ip&gt; 'sh /media/662522/Synths/vstscanner.sh'</pre> (afterwards just
+  <code>vstscanner</code>). MPC restarts; sfizz is listed under manufacturer <b>sfztools</b>.</li>
+</ol>
+<p>The zip's <code>README.md</code> covers other firmware (another drive, passing the settings file to the scanner).
+Use one install method per device: the scanner rebuilds MPC's whole plugin list from the folders it finds, so don't mix
+it with <code>install.sh</code>. To update, replace the folder (keep files you put in <code>sfizz/Instruments</code> and
+<code>sfizz/Scales</code>), repeat step 2 and run the scanner.</p>
 <h3>Manual install</h3>
 <p>The zip's <code>INSTALL.md</code> lists the manual steps: copy the plugin folder, stop MPC, back up and edit
 <code>MPC.settings</code>, start MPC.</p>
@@ -214,6 +230,8 @@ Volume and Pan knobs. A controller that doesn't fit still works from MIDI.</p>
 
 <div class="section">
 <h2>7. Settings reference</h2>
+<p>Tap a dark value button to open its list of options; tap an option to pick it and close the list. The lists open
+large for the touchscreen, below or above their button, in columns when they are long.</p>
 <table>
   <tr><th style="width:24%">Setting</th><th style="width:26%">Values (default in bold)</th><th>What it does</th></tr>
   <tr><td class="k">Max (voices)</td><td>1, 2, 4, 8, 16, 32, <b>64</b> (Gen1), <b>96</b> (Gen2), 128, 160, 192, 224, 256</td><td>How many voices can sound at once.

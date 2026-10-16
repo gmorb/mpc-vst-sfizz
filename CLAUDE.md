@@ -12,6 +12,7 @@ and `catalog/README.md` too; this file adds what is specific to this port.
 | Plugin name / vendor | `sfizz` / `sfztools` → plugin folder `sfztools - VST - sfizz` |
 | `.so` / uid | `sfizz_mpc.so` / `SfzM` (0x53667a4d). Never change: projects find the plugin by uid |
 | Catalog id | `sfizz`; entry `packaging/catalog/sfizz.json`; assets `sfizz-<version>-mpc-armv7.zip` (Gen1) and `sfizz-<version>-mpc-aarch64.zip` (Gen2), both on the same release |
+| Other assets | `sfizz-for-MPC-OS-<version>.zip` (Gen1 standalone folder for `vstscanner.sh`, README from `packaging/standalone-README.md`), `sfizz-for-MPC-OS-<version>-manual.pdf`, `SHA256SUMS`: all made by `tools/package.sh` |
 | Licence | BSD-2-Clause |
 | Kit commit | `e18a0a1da84515096d354f399dd4cd7f9c079fb5` (build and check against this one) |
 | Engine | sfizz 1.2.3 vendored in `src/sfizz` (`src/VENDORED.md`), local changes in one patch: `patches/0001-sfizz-for-mpc-os.patch` |
@@ -70,7 +71,8 @@ failure. Look at every preview image, and at a `tools/mock_screen.py` render, af
 ## Release
 1. Bump `version` in `vst.json` (e.g. 1005 for 1.0.5) and the version below. Update `RELEASE_NOTES.md`.
 2. Build and test as above.
-3. Package with the catalog fields (no other way of making the zips), once per `.so` with the same arguments:
+3. Package: `tools/package.sh` does all of the below and also the standalone zip, the manual copy and `SHA256SUMS`
+   (run `tools/make_manual.py` first if the manual changed). By hand, the catalog zips are, once per `.so`:
    ```
    for so in build/sfizz_mpc.so build/aarch64/sfizz_mpc.so; do
      python3 "$MPC_VST/tools/release.py" --so $so --skin "build/skin/sfztools - VST - sfizz" \
@@ -91,7 +93,8 @@ failure. Look at every preview image, and at a `tools/mock_screen.py` render, af
    git tag v1.0.4 && git push origin main v1.0.4
    gh release create v1.0.4 --repo gmorb/mpc-vst-sfizz --draft --title "sfizz for MPC OS 1.0.4" \
      --notes-file packaging/release-notes-v1.0.4.md \
-     dist/sfizz-1.0.4-mpc-armv7.zip dist/sfizz-1.0.4-mpc-aarch64.zip dist/SHA256SUMS
+     dist/sfizz-1.0.4-mpc-armv7.zip dist/sfizz-1.0.4-mpc-aarch64.zip dist/sfizz-for-MPC-OS-1.0.4.zip \
+     dist/sfizz-for-MPC-OS-1.0.4-manual.pdf dist/SHA256SUMS
    gh release view v1.0.4 --repo gmorb/mpc-vst-sfizz --json isDraft,assets,url     # check
    gh release edit v1.0.4 --repo gmorb/mpc-vst-sfizz --draft=false --latest        # only after the device test
    ```
@@ -137,6 +140,12 @@ The screenshot link is pinned to the tag: it must exist in that tag (`docs/scree
 - **List-row taps**: ignore value 0 (the echo of a row switching off), and drop taps made on a listing that has changed
   since. One touch still acted twice on the device with a 350 ms guard (1.0.3); 1.0.4 guards every browsing action for
   700 ms after the last one or a new listing (`nav_ok`). If it persists, log the setParameter calls on the device.
+- **Popup lists**: `skin_post.py` re-lays and re-draws every popup's option list larger than the kit does (46 px rows,
+  20 px text; `POP_*` at its end), from `layout.conf`'s field positions and `params.json`'s option names. A new popup
+  needs nothing extra; it exits non-zero if a list doesn't match. The kit's own `sh_po_*`/`sh_pop_*` pictures are removed.
+- **Standalone zip and `vstscanner.sh`**: the scanner fills `%payload-path%` in `plugin-meta.xml` only, not in
+  `Presets/0000-Default.xpl` (`install.sh` does both), so the standalone README has a one-line `sed` for the preset.
+  The scanner rebuilds the whole plugin list (Gen1 `pluginList-arm` only): one install method per device.
 - **Instruments tile**: `vst.json` `"tile": "art/tile.png"` (drawn by `design.py`), as the kit documents; the tile only
   opens the plugin through the Default preset the kit writes beside it.
 - **Parameter 0**: MPC toggles parameter 0 on insert and on every STOP; the kit's wrapper defers host sets of it, which

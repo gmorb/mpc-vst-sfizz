@@ -22,19 +22,32 @@ Requires a modded unit with root access, as every plugin from that project does.
 |---|---|---|
 | **Gen1**: MPC Live / Live II, One, X, Key 61, Force | RK3288, 32-bit | `sfizz-<version>-mpc-armv7.zip` |
 | **Gen2**: MPC Live III and other RK3588 units | RK3588, 64-bit | `sfizz-<version>-mpc-aarch64.zip` |
+| **Gen1**, installed with `vstscanner.sh` (Force VST distribution) | RK3288, 32-bit | `sfizz-for-MPC-OS-<version>.zip` |
 
-The installer checks the zip against the device and names the right one if it doesn't match. **Manual:**
+The `-mpc-` zips have an installer that checks the zip against the device and names the right one if it doesn't match.
+The `for-MPC-OS` zip is the same Gen1 plugin as a plain folder, for setups that register plugins with `vstscanner`. **Manual:**
 [docs/MANUAL.pdf](docs/MANUAL.pdf).
 
 ![The screen](docs/screen.png)
 
 ## Install
+**With the installer** (`sfizz-<version>-mpc-armv7.zip` or `-mpc-aarch64.zip`):
 1. Unzip, copy the `sfizz-<version>` folder to the device: `scp -r sfizz-1.0.4 root@<device-ip>:/tmp/`
 2. Run the installer: `ssh root@<device-ip> sh /tmp/sfizz-1.0.4/install.sh` (it stops and restarts MPC: save first).
 3. Add **sfizz** to a track from the plugin browser, or from Sounds › INSTRUMENTS (its sfizz tile, then Default). Tap ⌄
    to open an SFZ from an SD card or USB drive.
 
-Requirements: MPC OS 3.x and root SSH. The zip's `INSTALL.md` also has the manual steps. `uninstall.sh` removes it and
+**With `vstscanner`** (Gen1, `sfizz-for-MPC-OS-<version>.zip`; the zip's README has the details and other firmware):
+1. Copy the `sfztools - VST - sfizz` folder into the `Synths` folder on your card, next to `vstscanner.sh`
+   (MockbaMod: `/media/662522/Synths`).
+2. Point the Instruments tile's Default preset at that folder:
+   `ssh <device-ip> "sed -i 's|%payload-path%|/media/662522/Synths|' '/media/662522/Synths/sfztools - VST - sfizz/Presets/0000-Default.xpl'"`
+3. Run the scanner: `ssh <device-ip> 'sh /media/662522/Synths/vstscanner.sh'` (later just `vstscanner`). MPC restarts;
+   sfizz is under manufacturer "sfztools".
+
+Use one method per device: the scanner rebuilds MPC's whole plugin list from the folders it finds.
+
+Requirements: MPC OS 3.x and root SSH. The installer zip's `INSTALL.md` also has the manual steps. `uninstall.sh` removes it and
 keeps the SFZ files you put in its library folder. Or install it from the
 [MPC OS plugin catalog](https://github.com/sd88me/mpc-vst-plugins), which picks the right zip for the device by itself.
 
@@ -73,6 +86,9 @@ Left out, because they mean nothing on the MPC: the volume meters, Theme, Zoom, 
 (MPC never freewheels), and the file menu's Edit / Create / Open folder entries.
 
 **Q-Links**: Volume, Pan, the 8 CC knobs, Frequency, Stretch, Sample and Oscillator quality.
+
+The drop-down lists (Max, Preload size, Oversampling, Sample and Oscillator quality, Root key, the historical tuning
+presets) open large for the touchscreen: 46 px rows with 20 px text, in as few columns as fit beside their field.
 
 ![Side by side with sfizz's own editor](docs/compare.png)
 
@@ -122,7 +138,9 @@ releasing and the catalog are in [CLAUDE.md](CLAUDE.md) and [docs/RELEASE_AGENT.
 - `data/`: the plugin's `sfizz/` folder (default instrument and scale, empty library folders)
 - `tests/`, `tools/`: offline tests (x86 host test libraries, VST2 host under QEMU for both builds, screen mock,
   `make_images.py` for the pictures here)
-- `packaging/catalog/sfizz.json`: the MPC OS plugin catalog entry; `docs/`: manual, screenshots, release guide
+- `tools/package.sh`: the release files (both installer zips, the standalone zip, the manual, `SHA256SUMS`)
+- `packaging/catalog/sfizz.json`: the MPC OS plugin catalog entry; `packaging/standalone-README.md`: the standalone
+  zip's README; `docs/`: manual, screenshots, release guide; `NOTICE.md`: components and licences
 
 ## Credits and licence
 sfizz is by the [sfztools](https://github.com/sfztools) contributors; this port uses its 1.2.3 engine with documented

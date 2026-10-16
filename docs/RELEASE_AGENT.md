@@ -8,8 +8,8 @@ These instructions publish **sfizz for MPC OS 1.0.4** on GitHub as `gmorb/mpc-vs
 - **Never report a GitHub state you didn't just see in command output.** "Pushed", "created", "uploaded", "published",
   "PR opened" each need the command that did it and the command that checked it. Every URL you report comes from
   command output (`--json url`). If a step fails or you can't run it, report "not done" and why. No placeholders.
-- **Upload the delivered files exactly as they are.** Don't rebuild or re-zip them. The Gen1 zip is the one the owner
-  tested on their device; the checksums below are the proof that nothing changed.
+- **Upload the delivered files exactly as they are.** Don't rebuild or re-zip them: the checksums below are the proof
+  that nothing changed between the files the owner tests and the files the catalog serves.
 - Never force-push, delete or move a tag, rewrite history, or create a second release for a tag. If something already
   exists and differs from what is described here, **stop and ask**.
 - Use `gh` for everything it can do. Only the repository's social preview image needs the browser (step 4).
@@ -22,25 +22,27 @@ These instructions publish **sfizz for MPC OS 1.0.4** on GitHub as `gmorb/mpc-vs
 | GitHub repo | `gmorb/mpc-vst-sfizz`, public, default branch `main` |
 | Tag / release title | `v1.0.4` / `sfizz for MPC OS 1.0.4` |
 | Plugin | name `sfizz`, vendor `sfztools`, uid `SfzM`, catalog id `sfizz`, licence `BSD-2-Clause` |
-| Gen1 asset | `sfizz-1.0.4-mpc-armv7.zip`, sha256 `28aa71aeba2e2ffab017301b2b7adac8a1cbc30f2df9ec617094e9b88f4ae85f` |
-| Gen2 asset | `sfizz-1.0.4-mpc-aarch64.zip`, sha256 `9ab2e1764485ee140492c35385345162f40f13fee187002f4af593f6bd5fb15d` |
-| Other assets | `SHA256SUMS`, `sfizz-for-MPC-OS-1.0.4-manual.pdf` |
+| Gen1 asset | `sfizz-1.0.4-mpc-armv7.zip`, sha256 `418604f9ef5bd7e087f55377d50f0b3acb0013a5e23b356601aa87ba6375d463` |
+| Gen2 asset | `sfizz-1.0.4-mpc-aarch64.zip`, sha256 `0f4e89f543045e84df3935d797568b2cd88b13c3d521cb10fd1b22ae44039e0f` |
+| Standalone asset | `sfizz-for-MPC-OS-1.0.4.zip` (Gen1 plugin folder for `vstscanner.sh`), sha256 `d19dcf2befa454882e19d69e71cd87b2fbd342cb20acf224a96c9006a6d2fdd6` |
+| Other assets | `SHA256SUMS`, `sfizz-for-MPC-OS-1.0.4-manual.pdf` (its sha256 is in `SHA256SUMS`) |
 | Release notes | `packaging/release-notes-v1.0.4.md` (in the repo) |
 | Catalog entry | `packaging/catalog/sfizz.json` → `catalog/plugins/sfizz.json` in sd88me/mpc-vst-plugins |
 | Kit commit for checks | `e18a0a1da84515096d354f399dd4cd7f9c079fb5` (sd88me/mpc-vst-plugins) |
 
 One release carries both zips. The catalog has **one** entry for the plugin; it finds the Gen2 zip itself by swapping
-`armv7` for `aarch64` in the entry's `asset_pattern`. Never add a second entry for Gen2.
+`armv7` for `aarch64` in the entry's `asset_pattern`. Never add a second entry for Gen2. The standalone zip is for people
+who install by hand with `vstscanner.sh`; the catalog doesn't use it.
 
 ## 0. Inputs
 The owner gives you these files. Put them in one working folder:
 - `mpc-vst-sfizz-repo-1.0.4-with-git.tar.gz`: the repository with its full history
-- `sfizz-1.0.4-mpc-armv7.zip`, `sfizz-1.0.4-mpc-aarch64.zip`, `SHA256SUMS`
+- `sfizz-1.0.4-mpc-armv7.zip`, `sfizz-1.0.4-mpc-aarch64.zip`, `sfizz-for-MPC-OS-1.0.4.zip`, `SHA256SUMS`
 - `sfizz-for-MPC-OS-1.0.4-manual.pdf`
 
 ```
-mkdir -p rel && mv sfizz-1.0.4-mpc-*.zip SHA256SUMS sfizz-for-MPC-OS-1.0.4-manual.pdf rel/
-(cd rel && sha256sum -c SHA256SUMS)                       # check: both zips "OK"
+mkdir -p rel && mv sfizz-1.0.4-mpc-*.zip sfizz-for-MPC-OS-1.0.4.zip SHA256SUMS sfizz-for-MPC-OS-1.0.4-manual.pdf rel/
+(cd rel && sha256sum -c SHA256SUMS)                       # check: all four files "OK"
 tar -xzf mpc-vst-sfizz-repo-1.0.4-with-git.tar.gz         # unpacks mpc-vst-sfizz/
 git -C mpc-vst-sfizz status --short | head                # check: empty (clean tree)
 git -C mpc-vst-sfizz log --oneline -3                     # note the HEAD commit
@@ -102,32 +104,36 @@ git tag -a v1.0.4 -m "sfizz for MPC OS 1.0.4" && git push origin v1.0.4
 git ls-remote --tags https://github.com/gmorb/mpc-vst-sfizz v1.0.4                  # check: the tag, at HEAD
 ```
 
-## 6. Draft release with the four assets
+## 6. Draft release with the five assets
 ```
 gh release create v1.0.4 --repo gmorb/mpc-vst-sfizz --draft --verify-tag \
   --title "sfizz for MPC OS 1.0.4" --notes-file packaging/release-notes-v1.0.4.md \
-  ../rel/sfizz-1.0.4-mpc-armv7.zip ../rel/sfizz-1.0.4-mpc-aarch64.zip ../rel/SHA256SUMS \
-  ../rel/sfizz-for-MPC-OS-1.0.4-manual.pdf
+  ../rel/sfizz-1.0.4-mpc-armv7.zip ../rel/sfizz-1.0.4-mpc-aarch64.zip ../rel/sfizz-for-MPC-OS-1.0.4.zip \
+  ../rel/sfizz-for-MPC-OS-1.0.4-manual.pdf ../rel/SHA256SUMS
 gh release view v1.0.4 --repo gmorb/mpc-vst-sfizz --json tagName,name,isDraft,isPrerelease,url,assets \
   --jq '{tag:.tagName,name:.name,draft:.isDraft,pre:.isPrerelease,url:.url,assets:[.assets[]|{name,size}]}'
 ```
-Check: `draft: true`, `pre: false`, four assets with these sizes: armv7 zip 1411434 bytes, aarch64 zip 1489356 bytes.
+Check: `draft: true`, `pre: false`, five assets with these sizes: armv7 zip 1445908 bytes, aarch64 zip 1523827 bytes,
+standalone zip 1454311 bytes, manual 667556 bytes, `SHA256SUMS` 379 bytes.
 
 ## 7. Check the uploaded files the way the catalog will
 Scratch folders (`dl`, `kit`, `reg`, `catout`) go beside the repo, never inside it.
 ```
 rm -rf ../dl && gh release download v1.0.4 --repo gmorb/mpc-vst-sfizz -D ../dl
-(cd ../dl && sha256sum -c SHA256SUMS)                                               # check: both OK
+(cd ../dl && sha256sum -c SHA256SUMS)                                               # check: all four OK
 git clone -q https://github.com/sd88me/mpc-vst-plugins ../kit && git -C ../kit checkout -q e18a0a1da84515096d354f399dd4cd7f9c079fb5
 for z in ../dl/sfizz-1.0.4-mpc-armv7.zip ../dl/sfizz-1.0.4-mpc-aarch64.zip; do
   python3 ../kit/tools/catalog_check.py $z --catalog --expect-id sfizz --expect-repo gmorb/mpc-vst-sfizz; done
+unzip -l ../dl/sfizz-for-MPC-OS-1.0.4.zip | grep -cE "sfizz for MPC OS/(README.md|sfztools - VST - sfizz/(plugin-meta.xml|sfizz_mpc.so))$"
 ```
-Check: each run ends `OK: sfizz 1.0.4 (0 warnings)`.
+Check: each catalog check ends `OK: sfizz 1.0.4 (0 warnings)`, and the last line prints `3` (the standalone zip has its
+README, `plugin-meta.xml` and `.so`).
 
 ## 8. STOP: report and wait
 Report: the state output (step 2), the repo URL, the draft release URL, the assets with sizes, the checksum and catalog
 check output, and the social-preview note. Then wait. The owner tests the draft's zips on their devices and says **go**
-(and whether the Gen2 zip was tested on a Gen2 device).
+(and whether the Gen2 zip was tested on a Gen2 device). This build changed the screen's drop-down lists since the last
+device test, so remind the owner to open a few of them (Sample quality, the tuning presets) on the device.
 
 If the owner says the Gen2 zip *was* tested on a Gen2 device before you publish, update the notes' last Gen2 sentence
 ("tested offline (emulated) only so far") to name the device, in `packaging/release-notes-v1.0.4.md` on `main` (commit,

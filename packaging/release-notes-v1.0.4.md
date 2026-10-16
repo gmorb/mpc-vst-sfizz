@@ -7,16 +7,23 @@ tuning, on a one-page screen modelled on sfizz's own editor.
 |---|---|
 | **Gen1**: MPC Live / Live II, One, X, Key 61, Force (RK3288, 32-bit) | `sfizz-1.0.4-mpc-armv7.zip` |
 | **Gen2**: MPC Live III and other RK3588 units (64-bit) | `sfizz-1.0.4-mpc-aarch64.zip` |
+| **Gen1** with `vstscanner.sh` (Force VST distribution, e.g. MockbaMod) | `sfizz-for-MPC-OS-1.0.4.zip` |
 
 Same plugin, screen, parameters and ID on both: projects move between generations. Needs MPC OS 3.x and root SSH access.
-The installer checks that the zip matches the device. The manual is attached (`sfizz-for-MPC-OS-1.0.4-manual.pdf`).
+The installer zips check that they match the device. The manual is attached (`sfizz-for-MPC-OS-1.0.4-manual.pdf`).
 
 ## Install
+**Installer zips** (`-mpc-armv7` / `-mpc-aarch64`):
 ```
 scp -r sfizz-1.0.4 root@<device-ip>:/tmp/
 ssh root@<device-ip> sh /tmp/sfizz-1.0.4/install.sh      # stops and restarts MPC: save first
 ```
-Then add **sfizz** from the plugin browser, or from Sounds › INSTRUMENTS (the sfizz tile, then Default).
+**Standalone zip with `vstscanner`** (Gen1): copy the `sfztools - VST - sfizz` folder into your card's `Synths` folder
+next to `vstscanner.sh`, run the one-line preset fix from its README, then `vstscanner`. The README covers MockbaMod and
+other firmware. Use one method per device: the scanner rebuilds MPC's whole plugin list.
+
+Then add **sfizz** from the plugin browser (manufacturer "sfztools"), or from Sounds › INSTRUMENTS (the sfizz tile,
+then Default).
 
 ## New in 1.0.4
 - **Gen2 build** (aarch64): a native 64-bit build of the same engine. A new sfizz on Gen2 starts with Sample quality
@@ -29,14 +36,17 @@ Then add **sfizz** from the plugin browser, or from Sounds › INSTRUMENTS (the 
 - **Lighter defaults on Gen1**: Sample and Oscillator quality start at Linear. Raise Sample quality when there is CPU
   to spare; projects keep the quality they were saved with.
 - **Instruments tile**: sfizz shows as an artwork tile in Sounds › INSTRUMENTS (tap it, then Default).
+- **Larger drop-down lists**: taller rows, bigger text and wider cells in every option list, easier to read and hit.
+- **Standalone zip** for `vstscanner.sh` setups, with a README for MockbaMod and other firmware.
 
 Full history: [RELEASE_NOTES.md](https://github.com/gmorb/mpc-vst-sfizz/blob/v1.0.4/RELEASE_NOTES.md). Tests:
 [TESTING.md](https://github.com/gmorb/mpc-vst-sfizz/blob/v1.0.4/TESTING.md).
 
 ## SHA-256
 ```
-28aa71aeba2e2ffab017301b2b7adac8a1cbc30f2df9ec617094e9b88f4ae85f  sfizz-1.0.4-mpc-armv7.zip
-9ab2e1764485ee140492c35385345162f40f13fee187002f4af593f6bd5fb15d  sfizz-1.0.4-mpc-aarch64.zip
+418604f9ef5bd7e087f55377d50f0b3acb0013a5e23b356601aa87ba6375d463  sfizz-1.0.4-mpc-armv7.zip
+0f4e89f543045e84df3935d797568b2cd88b13c3d521cb10fd1b22ae44039e0f  sfizz-1.0.4-mpc-aarch64.zip
+d19dcf2befa454882e19d69e71cd87b2fbd342cb20acf224a96c9006a6d2fdd6  sfizz-for-MPC-OS-1.0.4.zip
 ```
 
 sfizz is by the sfztools contributors; this is an unofficial port (BSD-2-Clause), not affiliated with inMusic or Akai.
