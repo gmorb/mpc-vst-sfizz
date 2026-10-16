@@ -3,6 +3,7 @@
   "vendor": "sfztools",
   "uid": "SfzM",
   "version": 1004,
+  "targets": ["armv7", "aarch64"],
   "so": "sfizz_mpc.so",
   "params": "params.json",
   "layout": "layout.conf",

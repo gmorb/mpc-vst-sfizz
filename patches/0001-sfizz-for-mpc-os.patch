@@ -175,7 +175,7 @@ diff -ruN a/src/sfizz/FilePool.cpp b/src/sfizz/FilePool.cpp
  #if defined(_WIN32)
  #include <windows.h>
  #else
-@@ -46,6 +50,26 @@
+@@ -46,6 +50,35 @@
  #endif
  using namespace std::placeholders;
  
@@ -186,14 +186,23 @@ diff -ruN a/src/sfizz/FilePool.cpp b/src/sfizz/FilePool.cpp
 +std::atomic<size_t> gStreamBudget { size_t(192) << 20 };   // set by the host from the device's free memory
 +std::atomic<unsigned> gStreamCount { 0 };
 +std::atomic<size_t> gReserved { 0 };                       // address space reserved by streams (whole decoded files)
++#if defined(__aarch64__)
++// address space for whole decoded files (Gen2, a 64-bit process: no address-space ceiling to keep under)
++size_t reserveLimit() { return std::max<size_t>(gStreamBudget.load() * 3, size_t(256) << 20); }
++#else
 +// address space for whole decoded files: plenty for idle files to stay cached, well inside a 32-bit process
 +size_t reserveLimit() { return std::min<size_t>(std::max<size_t>(gStreamBudget.load() * 3, size_t(256) << 20), size_t(768) << 20); }
++#endif
 +std::atomic<unsigned> gStarved { 0 };                      // decode steps refused by the budget
 +std::atomic<unsigned> gFailed { 0 };                       // allocations that failed
 +std::atomic<unsigned> gTaken { 0 };                        // playing files freed for newer ones (memory short)
 +std::atomic<unsigned> gUnderruns { 0 };                    // notes cut because their data wasn't decoded in time
 +constexpr double kUrgentSeconds = 0.35;   // first pass: every playing file this far ahead of its furthest reader
++#if defined(__aarch64__)
++constexpr double kAheadSeconds = 2.0;     // second pass: this far ahead (Gen2: more memory, more slack for slow drives)
++#else
 +constexpr double kAheadSeconds = 1.25;    // second pass: this far ahead
++#endif
 +constexpr int kTickMs = 8;                // the streamer's round
 +constexpr int kWaitMs = 150;              // a new file waits this long for memory (its preloaded start plays meanwhile)
 +constexpr int kIdleSeconds = sfz::config::fileClearingPeriod;   // an unused file's memory is kept this long
@@ -202,7 +211,7 @@ diff -ruN a/src/sfizz/FilePool.cpp b/src/sfizz/FilePool.cpp
  static std::weak_ptr<ThreadPool> globalThreadPoolWeakPtr;
  static std::mutex globalThreadPoolMutex;
  
-@@ -70,7 +94,7 @@
+@@ -70,7 +103,7 @@
  }
  
  void readBaseFile(sfz::AudioReader& reader, sfz::FileAudioBuffer& output, uint32_t numFrames)
@@ -211,7 +220,7 @@ diff -ruN a/src/sfizz/FilePool.cpp b/src/sfizz/FilePool.cpp
      output.reset();
      output.resize(numFrames);
  
-@@ -88,6 +112,8 @@
+@@ -88,6 +121,8 @@
          reader.readNextBlock(tempReadBuffer.data(), numFrames);
          sfz::readInterleaved(tempReadBuffer, output.getSpan(0), output.getSpan(1));
      }
@@ -220,7 +229,7 @@ diff -ruN a/src/sfizz/FilePool.cpp b/src/sfizz/FilePool.cpp
  }
  
  sfz::FileAudioBuffer readFromFile(sfz::AudioReader& reader, uint32_t numFrames)
-@@ -144,6 +170,7 @@
+@@ -144,6 +179,7 @@
      : filesToLoad(alignedNew<FileQueue>()),
        threadPool(globalThreadPool())
  {
@@ -228,7 +237,7 @@ diff -ruN a/src/sfizz/FilePool.cpp b/src/sfizz/FilePool.cpp
      loadingJobs.reserve(config::maxVoices);
      lastUsedFiles.reserve(config::maxVoices);
      garbageToCollect.reserve(config::maxVoices);
-@@ -153,6 +180,14 @@
+@@ -153,6 +189,14 @@
  {
      std::error_code ec;
  
@@ -243,7 +252,7 @@ diff -ruN a/src/sfizz/FilePool.cpp b/src/sfizz/FilePool.cpp
      garbageFlag = false;
      semGarbageBarrier.post(ec);
      garbageThread.join();
-@@ -362,6 +397,7 @@
+@@ -362,6 +406,7 @@
  
  void sfz::FilePool::removeUnusedPreloadedData() noexcept
  {
@@ -251,7 +260,7 @@ diff -ruN a/src/sfizz/FilePool.cpp b/src/sfizz/FilePool.cpp
      for (auto it = preloadedFiles.begin(), end = preloadedFiles.end(); it != end; ) {
          auto copyIt = it++;
          if (copyIt->second.preloadCallCount == 0) {
-@@ -452,6 +488,7 @@
+@@ -452,6 +497,7 @@
  
  void sfz::FilePool::setPreloadSize(uint32_t preloadSize) noexcept
  {
@@ -259,7 +268,7 @@ diff -ruN a/src/sfizz/FilePool.cpp b/src/sfizz/FilePool.cpp
      this->preloadSize = preloadSize;
      if (loadInRam)
          return;
-@@ -467,6 +504,20 @@
+@@ -467,6 +513,20 @@
  
  void sfz::FilePool::loadingJob(const QueuedFileData& data) noexcept
  {
@@ -280,7 +289,7 @@ diff -ruN a/src/sfizz/FilePool.cpp b/src/sfizz/FilePool.cpp
      raiseCurrentThreadPriority();
  
      std::shared_ptr<FileId> id = data.id.lock();
-@@ -569,12 +620,20 @@
+@@ -569,12 +629,20 @@
  
  void sfz::FilePool::waitForBackgroundLoading() noexcept
  {
@@ -292,20 +301,20 @@ diff -ruN a/src/sfizz/FilePool.cpp b/src/sfizz/FilePool.cpp
 -        job.wait();
 +        for (auto& job : loadingJobs)
 +            job.wait();
-+
+ 
+-    loadingJobs.clear();
 +        loadingJobs.clear();
 +    }
 +    stopAllStreams();   // [sfizz for MPC OS] files are about to be cleared or moved: no stream may outlive this
 +}
- 
--    loadingJobs.clear();
++
 +void sfz::FilePool::emptyFileLoadingQueues() noexcept   // [sfizz for MPC OS] was a no-op
 +{
 +    waitForBackgroundLoading();
  }
  
  void sfz::FilePool::raiseCurrentThreadPriority() noexcept
-@@ -671,3 +730,370 @@
+@@ -671,3 +739,370 @@
      semGarbageBarrier.post(ec);
      ASSERT(!ec);
  }

@@ -40,7 +40,7 @@ static int run(int argc, char **argv) {
     for (int round = 0; round < 2; round++) {
         void *a = e->create(argv[1]);
         void *b = e->create(argv[1]);
-        sfizz_mpc_set_stream_budget(24ull << 20);   // tiny: forces eviction and starvation
+        sfizz_mpc_set_stream_budget((getenv("STRESS_BUDGET_MB") ? strtoull(getenv("STRESS_BUDGET_MB"), 0, 10) : 24ull) << 20);   // tiny by default: forces eviction and starvation
         snprintf(chunk, sizeof chunk, "sfizz-mpc 1\nfile=%s\n", argv[2]);
         e->set_param(a, "state", chunk);
         e->set_param(b, "state", chunk);

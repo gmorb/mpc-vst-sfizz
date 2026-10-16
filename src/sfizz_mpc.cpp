@@ -50,6 +50,20 @@ constexpr int MAX_MIDI = 256;
 
 const int POLYPHONY[] = {1, 2, 4, 8, 16, 32, 64, 96, 128, 160, 192, 224, 256};
 constexpr int N_POLY = int(sizeof POLYPHONY / sizeof POLYPHONY[0]);
+
+// Defaults for a new instance (and for a saved state without the value). Gen2 (RK3588, aarch64) has several times
+// the CPU and memory of Gen1 (RK3288, armv7), so it starts higher; both can be set to anything on the screen.
+#if defined(__aarch64__)
+constexpr int DEF_POLY_IDX = 7, DEF_VOICES = 96;
+constexpr int DEF_SAMPLE_QUALITY = 3;     // Sinc 8: on aarch64 about 1.3x Linear's CPU (TESTING.md)
+constexpr int DEF_OSC_QUALITY = 2;        // High
+constexpr unsigned long long STREAM_BUDGET_MAX = 1024ull << 20;   // a 64-bit process: up to 1 GB of decoded audio
+#else
+constexpr int DEF_POLY_IDX = 6, DEF_VOICES = 64;   // POLYPHONY[DEF_POLY_IDX]
+constexpr int DEF_SAMPLE_QUALITY = 1;     // Linear: the lightest on the CPU that still interpolates
+constexpr int DEF_OSC_QUALITY = 1;        // Linear
+constexpr unsigned long long STREAM_BUDGET_MAX = 384ull << 20;
+#endif
 const char *const NOTE_NAMES[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 const float TUNING_PRESETS[] = {380.0f, 409.0f, 415.0f, 422.5f, 423.2f, 435.0f, 439.0f, 440.0f, 442.0f, 445.0f, 451.0f};
 constexpr int N_TUNING = int(sizeof TUNING_PRESETS / sizeof TUNING_PRESETS[0]);
@@ -177,8 +191,8 @@ struct Inst {
 
     // values set from the screen (applied by render() or by a worker job)
     std::atomic<int> volume{100}, pan{64};
-    std::atomic<int> polyphony_idx{6}, oversampling_idx{0}, preload_idx{3}, sustain_cancels{0};
-    std::atomic<int> sample_quality{1}, osc_quality{1}, root_note{0}, root_oct{5}, tuning_preset{7};
+    std::atomic<int> polyphony_idx{DEF_POLY_IDX}, oversampling_idx{0}, preload_idx{3}, sustain_cancels{0};
+    std::atomic<int> sample_quality{DEF_SAMPLE_QUALITY}, osc_quality{DEF_OSC_QUALITY}, root_note{0}, root_oct{5}, tuning_preset{7};
     std::atomic<float> tuning_freq{440.0f}, stretch{0.0f};
     std::atomic<int> cc_val[CC_SLOTS];
     std::atomic<int> browse{0};
@@ -227,7 +241,7 @@ struct Inst {
     std::atomic<uint8_t> held[128] = {};
     std::atomic<uint32_t> key_changed[4] = {};
     std::atomic<int> settings_pending{0};
-    int applied_voices = 64, applied_factor = 1;   // what sfizz has (create() sets these)
+    int applied_voices = DEF_VOICES, applied_factor = 1;   // what sfizz has (create() sets these)
     uint32_t applied_preload = 8192;
 
     Inst() {
@@ -236,7 +250,7 @@ struct Inst {
 };
 
 // The decoded-sample memory budget (all instances): a third of the memory free when the first instance starts, within
-// 48-384 MB. MPC itself and the user's other programs need the rest; a 32-bit process also has a limited address space.
+// 48-384 MB (Gen2: 48 MB-1 GB). MPC itself and the user's other programs need the rest; a 32-bit process also has a limited address space.
 void init_stream_budget() {
     static std::once_flag once;
     std::call_once(once, [] {
@@ -249,7 +263,7 @@ void init_stream_budget() {
             std::fclose(f);
         }
         unsigned long long budget = availKb ? availKb * 1024 / 3 : (192ull << 20);
-        budget = std::max(48ull << 20, std::min(384ull << 20, budget));
+        budget = std::max(48ull << 20, std::min(STREAM_BUDGET_MAX, budget));
         sfizz_mpc_set_stream_budget(budget);
     });
 }
@@ -549,12 +563,12 @@ void *create(const char *data_dir) {
     o->data_dir = data_dir && *data_dir ? data_dir : ".";
     o->synth.setSampleRate(float(SR));
     o->synth.setSamplesPerBlock(BLOCK);
-    o->synth.setNumVoices(64);
+    o->synth.setNumVoices(DEF_VOICES);
     o->synth.setPreloadSize(8192);
-    o->synth.setSampleQuality(sfz::Sfizz::ProcessLive, 1);   // Linear: the lightest on the CPU that still interpolates
-    o->synth.setSampleQuality(sfz::Sfizz::ProcessFreewheeling, 1);
-    o->synth.setOscillatorQuality(sfz::Sfizz::ProcessLive, 1);
-    o->synth.setOscillatorQuality(sfz::Sfizz::ProcessFreewheeling, 1);
+    o->synth.setSampleQuality(sfz::Sfizz::ProcessLive, DEF_SAMPLE_QUALITY);
+    o->synth.setSampleQuality(sfz::Sfizz::ProcessFreewheeling, DEF_SAMPLE_QUALITY);
+    o->synth.setOscillatorQuality(sfz::Sfizz::ProcessLive, DEF_OSC_QUALITY);
+    o->synth.setOscillatorQuality(sfz::Sfizz::ProcessFreewheeling, DEF_OSC_QUALITY);
     o->client = o->synth.createClient(o);
     sfz::Sfizz::setReceiveCallback(*o->client, &on_message);
     // Gentle background loading, always (vendored FilePool.cpp): normal priority, paced, stops when a file is unused.
@@ -806,12 +820,12 @@ void restore_state(Inst *o, const char *text) {
         i = e + 1;
     }
     auto num = [&](const char *k, double d) { return kv.count(k) ? std::atof(kv[k].c_str()) : d; };
-    o->polyphony_idx = clampi(int(num("polyphony", 6)), 0, N_POLY - 1);
+    o->polyphony_idx = clampi(int(num("polyphony", DEF_POLY_IDX)), 0, N_POLY - 1);
     o->oversampling_idx = clampi(int(num("oversampling", 0)), 0, 3);
     o->preload_idx = clampi(int(num("preload", 3)), 0, 6);
     o->sustain_cancels = int(num("sustain_cancels", 0)) ? 1 : 0;
-    o->sample_quality = clampi(int(num("sample_quality", 1)), 0, 10);
-    o->osc_quality = clampi(int(num("osc_quality", 1)), 0, 3);
+    o->sample_quality = clampi(int(num("sample_quality", DEF_SAMPLE_QUALITY)), 0, 10);
+    o->osc_quality = clampi(int(num("osc_quality", DEF_OSC_QUALITY)), 0, 3);
     o->root_note = clampi(int(num("root_note", 0)), 0, 11);
     o->root_oct = clampi(int(num("root_oct", 5)), 0, 10);
     o->tuning_freq = float(std::max(300.0, std::min(500.0, num("tuning_freq", 440))));

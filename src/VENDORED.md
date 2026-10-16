@@ -66,6 +66,15 @@ Tried and dropped (1.0.2): skipping the audio of voices that have decayed below 
 got there: recorded tails reach the recording's noise floor (around −70 to −80 dBFS) and the samples end. Below an
 inaudible threshold there was nothing to gain; above one it would cut real tails.
 
+### Gen2 (aarch64)
+The same tree builds for aarch64 (`build.sh so64`). In `FilePool.cpp`, behind `#if defined(__aarch64__)`: the address
+space reserved for whole decoded files has no 768 MB ceiling (a 64-bit process), and the streamer keeps 2 s ahead
+instead of 1.25 s. The engine (`src/sfizz_mpc.cpp`) sets the budget's ceiling to 1 GB and the new-instance defaults to
+Sinc 8 / High / 96 voices there. The armv7 build is unchanged by all of this (byte-identical `.so`). On aarch64 the
+output matches upstream to within 3e-8 (1e-7 at Sinc 8) rather than bit for bit: the compiler contracts multiply-adds
+differently in upstream's scalar loops than in the port's NEON ones. Per-voice instruction counts for both builds are
+in TESTING.md ("CPU per voice").
+
 ### Robustness
 - `ScopedFTZ.cpp`: the ARM destructor wrote the saved FPSCR with `vmrs` (a read) instead of `vmsr`, so flush-to-zero was
   never restored for the host. Fixed (and `msr fpcr` on aarch64).

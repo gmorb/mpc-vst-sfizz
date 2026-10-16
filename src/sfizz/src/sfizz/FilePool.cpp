@@ -57,14 +57,23 @@ std::atomic<size_t> gStreamBytes { 0 };                    // decoded sample mem
 std::atomic<size_t> gStreamBudget { size_t(192) << 20 };   // set by the host from the device's free memory
 std::atomic<unsigned> gStreamCount { 0 };
 std::atomic<size_t> gReserved { 0 };                       // address space reserved by streams (whole decoded files)
+#if defined(__aarch64__)
+// address space for whole decoded files (Gen2, a 64-bit process: no address-space ceiling to keep under)
+size_t reserveLimit() { return std::max<size_t>(gStreamBudget.load() * 3, size_t(256) << 20); }
+#else
 // address space for whole decoded files: plenty for idle files to stay cached, well inside a 32-bit process
 size_t reserveLimit() { return std::min<size_t>(std::max<size_t>(gStreamBudget.load() * 3, size_t(256) << 20), size_t(768) << 20); }
+#endif
 std::atomic<unsigned> gStarved { 0 };                      // decode steps refused by the budget
 std::atomic<unsigned> gFailed { 0 };                       // allocations that failed
 std::atomic<unsigned> gTaken { 0 };                        // playing files freed for newer ones (memory short)
 std::atomic<unsigned> gUnderruns { 0 };                    // notes cut because their data wasn't decoded in time
 constexpr double kUrgentSeconds = 0.35;   // first pass: every playing file this far ahead of its furthest reader
+#if defined(__aarch64__)
+constexpr double kAheadSeconds = 2.0;     // second pass: this far ahead (Gen2: more memory, more slack for slow drives)
+#else
 constexpr double kAheadSeconds = 1.25;    // second pass: this far ahead
+#endif
 constexpr int kTickMs = 8;                // the streamer's round
 constexpr int kWaitMs = 150;              // a new file waits this long for memory (its preloaded start plays meanwhile)
 constexpr int kIdleSeconds = sfz::config::fileClearingPeriod;   // an unused file's memory is kept this long

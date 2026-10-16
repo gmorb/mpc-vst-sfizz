@@ -48,6 +48,7 @@ int main(int argc, char **argv) {
     settle();
     int fn = find("File");
     printf("start: File=\"%s\"\n", disp(fn));
+    printf("defaults: Polyphony=%s Sample=%s Oscillator=%s\n", disp(1), disp(5), disp(6));
     midi(0x90, 60, 100); printf("default instrument note rms %.4f\n", run(100)); midi(0x80, 60, 0); run(50);
     for (int a = 2; a < argc; a++) {
         char chunk[512];
