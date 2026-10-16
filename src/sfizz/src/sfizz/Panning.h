@@ -32,6 +32,15 @@ inline void pan(absl::Span<const float> panEnvelope, absl::Span<float> leftBuffe
 }
 
 /**
+ * @brief [sfizz for MPC OS] A stereo voice's amplitude, pan, width, position and make-up gain in one pass, for pan,
+ * width and position constant over the block. Only valid where canFuseAmpPanWidth() says the result equals the
+ * separate stages (ARM NEON, aligned buffers, a multiple of 4 frames).
+ */
+bool canFuseAmpPanWidth(const float* gain, const float* leftBuffer, const float* rightBuffer, unsigned size) noexcept;
+void ampPanWidthStereo(const float* gain, float* leftBuffer, float* rightBuffer, unsigned size, float panValue,
+                       float widthValue, float positionValue, float postGain) noexcept;
+
+/**
  * @brief Controls the width of a stereo signal, setting it to mono when width = 0 and inverting the channels
  * when width = -1. Width = 1 has no effect.
  *

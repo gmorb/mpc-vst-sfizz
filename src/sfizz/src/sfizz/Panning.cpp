@@ -150,6 +150,64 @@ static void widthConstant(float value, float* leftBuffer, float* rightBuffer, un
     }
 }
 
+bool canFuseAmpPanWidth(const float* gain, const float* leftBuffer, const float* rightBuffer, unsigned size) noexcept
+{
+#if SFIZZ_HAVE_NEON
+    // Only where the separate stages would each run their NEON blocks over the whole span (aligned, a multiple of 4):
+    // then every sample gets the same coefficients and the same operations, in the same order.
+    const auto misaligned = [](const void* p) { return (reinterpret_cast<uintptr_t>(p) & (ByteAlignment - 1)) != 0; };
+    return size > 0 && (size % TypeAlignment) == 0 && !misaligned(gain) && !misaligned(leftBuffer)
+        && !misaligned(rightBuffer);
+#else
+    (void)gain; (void)leftBuffer; (void)rightBuffer; (void)size;
+    return false;
+#endif
+}
+
+void ampPanWidthStereo(const float* gain, float* leftBuffer, float* rightBuffer, unsigned size, float panValue,
+                       float widthValue, float positionValue, float postGain) noexcept
+{
+#if SFIZZ_HAVE_NEON
+    const uint32_t panIdx = neonPanIndex(panValue);
+    const uint32_t widthIdx = neonPanIndex(widthValue);
+    const uint32_t positionIdx = neonPanIndex(positionValue);
+    const float32x4_t panL = vdupq_n_f32(panData[panIdx]);
+    const float32x4_t panR = vdupq_n_f32(panData[panSize - panIdx - 1]);
+    const float32x4_t coeff1 = vdupq_n_f32(panData[widthIdx]);
+    const float32x4_t coeff2 = vdupq_n_f32(panData[panSize - widthIdx - 1]);
+    const float32x4_t posL = vdupq_n_f32(panData[positionIdx]);
+    const float32x4_t posR = vdupq_n_f32(panData[panSize - positionIdx - 1]);
+    const float32x4_t post = vdupq_n_f32(postGain);
+    // Each stage's result goes through an empty asm, as if stored: under -ffast-math the compiler would otherwise fold
+    // the constant coefficients of consecutive stages together (fewer multiplies, different rounding).
+#define SFIZZ_STAGE(x) __asm__("" : "+w"(x))
+    for (unsigned i = 0; i < size; i += TypeAlignment) {
+        const float32x4_t g = vld1q_f32(gain + i);
+        float32x4_t l = vmulq_f32(g, vld1q_f32(leftBuffer + i));            // amplitude (applyGain)
+        float32x4_t r = vmulq_f32(g, vld1q_f32(rightBuffer + i));
+        SFIZZ_STAGE(l); SFIZZ_STAGE(r);
+        l = vmulq_f32(l, panL);                                              // pan
+        r = vmulq_f32(r, panR);
+        SFIZZ_STAGE(l); SFIZZ_STAGE(r);
+        float32x4_t al = vmulq_f32(coeff2, l), bl = vmulq_f32(coeff1, r);    // width
+        float32x4_t ar = vmulq_f32(coeff1, l), br = vmulq_f32(coeff2, r);
+        SFIZZ_STAGE(al); SFIZZ_STAGE(bl); SFIZZ_STAGE(ar); SFIZZ_STAGE(br);   // (no fused multiply-add)
+        float32x4_t wl = vaddq_f32(al, bl);
+        float32x4_t wr = vaddq_f32(ar, br);
+        SFIZZ_STAGE(wl); SFIZZ_STAGE(wr);
+        l = vmulq_f32(wl, posL);                                             // position
+        r = vmulq_f32(wr, posR);
+        SFIZZ_STAGE(l); SFIZZ_STAGE(r);
+        vst1q_f32(leftBuffer + i, vmulq_f32(post, l));                       // the +6 dB make-up (applyGain1)
+        vst1q_f32(rightBuffer + i, vmulq_f32(post, r));
+    }
+#undef SFIZZ_STAGE
+#else
+    (void)gain; (void)leftBuffer; (void)rightBuffer; (void)size; (void)panValue; (void)widthValue; (void)positionValue;
+    (void)postGain;
+#endif
+}
+
 void pan(const float* panEnvelope, float* leftBuffer, float* rightBuffer, unsigned size) noexcept
 {
     if (size > 0 && isConstant(panEnvelope, size)) {   // [sfizz for MPC OS]

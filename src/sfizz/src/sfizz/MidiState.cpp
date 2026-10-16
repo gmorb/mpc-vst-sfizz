@@ -89,6 +89,8 @@ void sfz::MidiState::flushEvents() noexcept
 {
     auto flushEventVector = [] (EventVector& events) {
         ASSERT(!events.empty()); // CC event vectors should never be empty
+        if (events.size() == 1 && events.front().delay == 0)
+            return;   // [sfizz for MPC OS] already flushed (nearly all of the ~650 controllers, every block)
         events.front().value = events.back().value;
         events.front().delay = 0;
         events.resize(1);

@@ -123,6 +123,7 @@ struct Voice::Impl
      * @param buffer
      */
     void ampStageStereo(AudioSpan<float> buffer) noexcept;
+    bool ampPanStageStereoFused(AudioSpan<float> buffer) noexcept;   // [sfizz for MPC OS]
     /**
      * @brief Amplitude stage for a mono source
      *
@@ -799,8 +800,10 @@ void Voice::renderBlock(AudioSpan<float, 2> buffer) noexcept
     }
 
     if (region->isStereo()) {
-        impl.ampStageStereo(buffer);
-        impl.panStageStereo(buffer);
+        if (!impl.ampPanStageStereoFused(buffer)) {
+            impl.ampStageStereo(buffer);
+            impl.panStageStereo(buffer);
+        }
         impl.filterStageStereo(buffer);
     } else {
         impl.ampStageMono(buffer);
@@ -817,7 +820,10 @@ void Voice::renderBlock(AudioSpan<float, 2> buffer) noexcept
             impl.switchState(State::cleanMeUp);
     }
 
-    impl.powerFollower_.process(buffer);
+    // [sfizz for MPC OS] the power is only read when the stealer follows it (enabling clears it): upstream measured it
+    // for every voice regardless
+    if (impl.followPower_)
+        impl.powerFollower_.process(buffer);
 
     impl.age_ += buffer.getNumFrames();
     if (impl.triggerDelay_) {
@@ -903,6 +909,33 @@ void Voice::Impl::amplitudeEnvelope(absl::Span<float> modulationSpan) noexcept
     // Amplitude EG
     absl::Span<const float> ampegOut(mm.getModulation(masterAmplitudeTarget_), numSamples);
     ASSERT(ampegOut.data());
+
+#if defined(SIMDE_ARM_NEON_A32V7_NATIVE)
+    // [sfizz for MPC OS] the copy and the two gains below in one pass when there is no volume modulation: the same
+    // products in the same order (each kept apart from the next, as when stored), the matrix asked in the same order
+    {
+        const float* ampMod = mm.getModulation(amplitudeTarget_);
+        const auto aligned = [](const void* p) { return (reinterpret_cast<uintptr_t>(p) & 15) == 0; };
+        if (ampegOut.data() && numSamples % 4 == 0 && aligned(ampegOut.data()) && aligned(modulationSpan.data())
+            && (!ampMod || aligned(ampMod)) && !mm.validTarget(volumeTarget_)) {
+            const float32x4_t g1 = vdupq_n_f32(baseGain_);
+            const float32x4_t g2 = vdupq_n_f32(db2mag(baseVolumedB_));
+            const float* eg = ampegOut.data();
+            float* out = modulationSpan.data();
+            for (size_t i = 0; i < numSamples; i += 4) {
+                float32x4_t x = vmulq_f32(g1, vld1q_f32(eg + i));
+                __asm__("" : "+w"(x));
+                if (ampMod) {
+                    x = vmulq_f32(x, vld1q_f32(ampMod + i));
+                    __asm__("" : "+w"(x));
+                }
+                vst1q_f32(out + i, vmulq_f32(g2, x));
+            }
+            gainSmoother_.process(modulationSpan, modulationSpan);
+            return;
+        }
+    }
+#endif
     copy(ampegOut, modulationSpan);
 
     // Amplitude envelope
@@ -937,7 +970,8 @@ void Voice::Impl::ampStageMono(AudioSpan<float> buffer) noexcept
         return;
 
     amplitudeEnvelope(*modulationSpan);
-    applyCrossfades(*modulationSpan);
+    if (!region_->crossfadeCCInRange.empty() || !region_->crossfadeCCOutRange.empty())
+        applyCrossfades(*modulationSpan);   // [sfizz for MPC OS] without CC crossfades it multiplies by exactly 1
     applyGain<float>(*modulationSpan, leftBuffer);
 }
 
@@ -953,8 +987,54 @@ void Voice::Impl::ampStageStereo(AudioSpan<float> buffer) noexcept
         return;
 
     amplitudeEnvelope(*modulationSpan);
-    applyCrossfades(*modulationSpan);
+    if (!region_->crossfadeCCInRange.empty() || !region_->crossfadeCCOutRange.empty())
+        applyCrossfades(*modulationSpan);   // [sfizz for MPC OS] without CC crossfades it multiplies by exactly 1
     buffer.applyGain(*modulationSpan);
+}
+
+// [sfizz for MPC OS] ampStageStereo + panStageStereo in one pass over the audio when pan, width and position don't move
+// during the block (the usual case, modulated or not): the same operations per sample in the same order, and the
+// modulation matrix is asked for the same targets in the same order. False: nothing done, run the two stages.
+bool Voice::Impl::ampPanStageStereoFused(AudioSpan<float> buffer) noexcept
+{
+    BufferPool& bufferPool = resources_.getBufferPool();
+    const auto numSamples = buffer.getNumFrames();
+    auto modulationSpan = bufferPool.getBuffer(numSamples);
+    if (!modulationSpan)
+        return false;
+    const auto leftBuffer = buffer.getSpan(0);
+    const auto rightBuffer = buffer.getSpan(1);
+    const unsigned n = static_cast<unsigned>(numSamples);
+    if (!canFuseAmpPanWidth(modulationSpan->data(), leftBuffer.data(), rightBuffer.data(), n))
+        return false;
+
+    amplitudeEnvelope(*modulationSpan);
+    if (!region_->crossfadeCCInRange.empty() || !region_->crossfadeCCOutRange.empty())
+        applyCrossfades(*modulationSpan);
+
+    // each envelope as panStageStereo builds it (the region's value, plus the modulation if any), if constant
+    ModMatrix& mm = resources_.getModMatrix();
+    const auto constantValue = [&](ModMatrix::TargetId target, float base, float& value) {
+        value = base;
+        const float* mod = mm.getModulation(target);
+        if (!mod)
+            return true;
+        bool varies = false;
+        for (unsigned i = 1; i < n; ++i)
+            varies |= mod[i] != mod[0];
+        value = base + mod[0];
+        return !varies;
+    };
+    float panValue, widthValue, positionValue;
+    if (constantValue(panTarget_, region_->pan, panValue) && constantValue(widthTarget_, region_->width, widthValue)
+        && constantValue(positionTarget_, region_->position, positionValue)) {
+        ampPanWidthStereo(modulationSpan->data(), leftBuffer.data(), rightBuffer.data(), n, panValue, widthValue,
+                          positionValue, 1.9952623149688797f);
+    } else {   // a moving pan: the separate stages (the matrix returns the targets it has already computed)
+        buffer.applyGain(*modulationSpan);
+        panStageStereo(buffer);
+    }
+    return true;
 }
 
 void Voice::Impl::panStageMono(AudioSpan<float> buffer) noexcept
@@ -1402,11 +1482,20 @@ static void fillSinc8Stereo(const float* leftSource, const float* rightSource, f
         const float* r = rightSource + *ind - 3;
         const simde__m128 yl = simde_mm_add_ps(simde_mm_mul_ps(h0, simde_mm_loadu_ps(l)), simde_mm_mul_ps(h1, simde_mm_loadu_ps(l + 4)));
         const simde__m128 yr = simde_mm_add_ps(simde_mm_mul_ps(h0, simde_mm_loadu_ps(r)), simde_mm_mul_ps(h1, simde_mm_loadu_ps(r + 4)));
+#if defined(SIMDE_ARM_NEON_A32V7_NATIVE)
+        // pairwise adds in registers: the same sums in the same order as the hadd below ((0+1)+(2+3) per side)
+        const float32x4_t vl = simde__m128_to_neon_f32(yl), vr = simde__m128_to_neon_f32(yr);
+        const float32x2_t sums = vpadd_f32(vpadd_f32(vget_low_f32(vl), vget_high_f32(vl)),
+                                           vpadd_f32(vget_low_f32(vr), vget_high_f32(vr)));
+        const float leftOutput = vget_lane_f32(sums, 0);
+        const float rightOutput = vget_lane_f32(sums, 1);
+#else
         const simde__m128 pairs = simde_mm_hadd_ps(yl, yr);   // l01 l23 r01 r23
         alignas(16) float p[4];
         simde_mm_store_ps(p, pairs);
         const float leftOutput = p[0] + p[1];
         const float rightOutput = p[2] + p[3];
+#endif
         IF_CONSTEXPR(Adding) {
             const float g = *addingGain++;
             *left += g * leftOutput;
