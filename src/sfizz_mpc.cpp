@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <chrono>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -131,6 +132,27 @@ std::string find_by_name(const std::string &root, const std::string &name, int d
     return {};
 }
 
+long long now_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// The on-screen keyboard: two octaves and a C. Its keys are list tiles: white keys "kw_1".."kw_15", black keys in
+// four groups (the gaps between them): "kba_1..2" (C# D#), "kbb_1..3" (F# G# A#), "kbc_1..2", "kbd_1..3".
+constexpr int KB_KEYS = 25;
+constexpr int TAP_MS = 600;   // a tap plays its note this long (MPC reports the touch, not the finger lifting)
+int kb_offset(const char *key) {   // semitones above the keyboard's first C, or -1
+    static const int white[15] = {0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24};
+    if (std::strncmp(key, "kw_", 3) == 0 || (key[0] == 'k' && key[1] == 'b' && key[2] >= 'a' && key[2] <= 'd' && key[3] == '_')) {
+        const char *d = key + (key[1] == 'w' ? 3 : 4);
+        if (!std::isdigit(static_cast<unsigned char>(*d))) return -1;
+        int n = std::atoi(d) - 1;
+        if (key[1] == 'w') return n >= 0 && n < 15 ? white[n] : -1;
+        static const int black[4][3] = {{1, 3, -1}, {6, 8, 10}, {13, 15, -1}, {18, 20, 22}};
+        return n >= 0 && n < 3 ? black[key[2] - 'a'][n] : -1;
+    }
+    return -1;
+}
+
 std::string note_name(int key) {
     key = std::max(0, std::min(127, key));
     return std::string(NOTE_NAMES[key % 12]) + " " + std::to_string(key / 12 - 1);
@@ -206,6 +228,17 @@ struct Inst {
 
     int block_count = 0;
     int locked_blocks = 0;   // render() blocks in a row the synth was busy
+
+    // browser taps: the listing they were made on, and when the last action happened (see set_param)
+    std::atomic<unsigned> br_gen{0};
+    std::atomic<long long> br_last_ms{0};
+
+    // the on-screen keyboard: KB_KEYS keys from kb_base (a C); taps play a note for TAP_MS; keys light while sounding
+    std::atomic<int> kb_base{48};
+    std::atomic<uint8_t> held[128] = {};     // note on from MIDI (audio thread writes, everyone reads)
+    std::atomic<uint8_t> tap_lit[128] = {};  // a tap's note is sounding
+    std::atomic<uint32_t> tap_req[4] = {};   // taps waiting for the audio thread (bit per note)
+    int tap_left[128] = {};                  // frames left of a tap's note (audio thread only)
     std::atomic<int> settings_pending{0};
     int applied_voices = 64, applied_factor = 1;   // what sfizz has (create() sets these)
     uint32_t applied_preload = 8192;
@@ -424,6 +457,8 @@ void browse_to(Inst *o, const std::string &dir) {
     o->br_entries = std::move(es);
     o->br_top = 0;
     if (!dir.empty() && o->br_entries.empty()) o->status = "No SFZ files or folders here";
+    o->br_gen++;
+    o->br_last_ms = now_ms();
     o->display_rev++;
 }
 
@@ -578,11 +613,12 @@ void play_midi(Inst *o) {
     for (int k = 0; k < o->midi_n; k++) {
         const uint8_t *m = o->midi_q[k].b;
         int st = m[0] & 0xF0, len = o->midi_q[k].len;
-        if (st == 0x90 && len == 3 && m[2] > 0) o->synth.noteOn(0, m[1], m[2]);
-        else if ((st == 0x80 || st == 0x90) && len == 3) o->synth.noteOff(0, m[1], m[2]);
+        if (st == 0x90 && len == 3 && m[2] > 0) { o->synth.noteOn(0, m[1], m[2]); o->held[m[1] & 127] = 1; }
+        else if ((st == 0x80 || st == 0x90) && len == 3) { o->synth.noteOff(0, m[1], m[2]); o->held[m[1] & 127] = 0; }
         else if (st == 0xB0 && len == 3) {
             if (m[1] == 120 || m[1] == 123) {   // all sound / notes off
                 o->synth.allSoundOff();
+                for (auto &h : o->held) h = 0;
                 continue;
             }
             o->synth.hdcc(0, m[1], float(m[2]) / 127.0f);
@@ -592,6 +628,28 @@ void play_midi(Inst *o) {
         else if (st == 0xA0 && len == 3) o->synth.polyAftertouch(0, m[1], m[2]);
     }
     o->midi_n = 0;
+}
+
+// audio thread, synth held: the keyboard's taps start (or restart) their notes; notes whose time is up end
+void play_taps(Inst *o, int frames) {
+    for (int w = 0; w < 4; w++) {
+        uint32_t bits = o->tap_req[w].exchange(0);
+        while (bits) {
+            int b = __builtin_ctz(bits);
+            bits &= bits - 1;
+            int note = w * 32 + b;
+            if (o->tap_left[note] > 0) o->synth.noteOff(0, note, 0);
+            o->synth.noteOn(0, note, 100);
+            o->tap_left[note] = TAP_MS * SR / 1000;
+            o->tap_lit[note] = 1;
+        }
+    }
+    for (int note = 0; note < 128; note++)
+        if (o->tap_left[note] > 0 && (o->tap_left[note] -= frames) <= 0) {
+            o->tap_left[note] = 0;
+            o->synth.noteOff(0, note, 0);
+            o->tap_lit[note] = 0;
+        }
 }
 
 void apply_dirty(Inst *o) {
@@ -638,6 +696,7 @@ void render(void *inst, int16_t *out, int frames) {
     o->locked_blocks = 0;
     apply_dirty(o);
     play_midi(o);
+    play_taps(o, frames);
     o->synth.renderBlock(bufs, size_t(frames), 1);
     if (++o->block_count % 32 == 0) {   // ~93 ms: the keyswitch, voices and memory readouts
         send(o, "/sw/last/current");
@@ -702,7 +761,32 @@ void set_param(void *inst, const char *key, const char *val) {
     }
     if (!std::strcmp(key, "stretch")) { o->stretch = std::max(0.0f, std::min(1.0f, float(std::atof(val)))); o->dirty |= Inst::D_STRETCH; return; }
     if (!std::strcmp(key, "browse")) { o->browse = iv ? 1 : 0; return; }
-    if (int r = br_row_of(key); r >= 0) { push_job(o, [o, r] { browse_tap(o, r); }); return; }
+    if (int r = br_row_of(key); r >= 0) {
+        // One tap, one action. A row's value 0 is the echo of it turning off (or a stale toggle), not a tap; and a tap
+        // that arrives right after a new listing appeared, or acts on a listing that has changed since, is the same
+        // finger landing on the next folder's row (it opened two folders, or a folder and a file, at once).
+        if (!trig(val)) return;
+        long long now = now_ms();
+        if (now - o->br_last_ms.load() < 350) return;
+        o->br_last_ms = now;
+        unsigned gen = o->br_gen.load();
+        push_job(o, [o, r, gen] { if (o->br_gen.load() == gen) browse_tap(o, r); });
+        return;
+    }
+    if (int k = kb_offset(key); k >= 0) {
+        int note = o->kb_base + k;
+        if (note < 0 || note > 127) return;
+        // value 1 is a tap; value 0 is a tap on a key that was lit (the toggle went off), else an echo
+        if (!trig(val) && !o->held[note] && !o->tap_lit[note]) return;
+        o->tap_req[note >> 5] |= 1u << (note & 31);
+        return;
+    }
+    if (!std::strcmp(key, "kb_down") || !std::strcmp(key, "kb_up")) {
+        if (!trig(val)) return;
+        o->kb_base = clampi(o->kb_base + (key[3] == 'd' ? -12 : 12), 0, 96);
+        o->display_rev++;
+        return;
+    }
     if (!trig(val)) return;   // the rest are triggers
     if (!std::strcmp(key, "file_prev")) push_job(o, [o] { step_file(o, -1); });
     else if (!std::strcmp(key, "file_next")) push_job(o, [o] { step_file(o, +1); });
@@ -716,6 +800,7 @@ void set_param(void *inst, const char *key, const char *val) {
         int n = int(o->br_entries.size());
         o->br_top += key[5] == 'u' ? -BR_ROWS : BR_ROWS;
         o->br_top = std::max(0, std::min(o->br_top, std::max(0, n - BR_ROWS)));
+        o->br_gen++;
         o->display_rev++;
     }
 }
@@ -732,7 +817,8 @@ std::string state_text(Inst *o) {
                   o->volume.load(), o->pan.load(), o->polyphony_idx.load(), o->oversampling_idx.load(), o->preload_idx.load(),
                   o->sustain_cancels.load(), o->sample_quality.load(), o->osc_quality.load(), o->root_note.load(),
                   o->root_oct.load(), double(o->tuning_freq.load()), o->tuning_preset.load(), double(o->stretch.load()));
-    std::string s = "sfizz-mpc 1\nfile=" + o->file_path + "\nscala=" + o->scala_path + "\n" + b;
+    std::string s = "sfizz-mpc 1\nfile=" + o->file_path + "\nscala=" + o->scala_path + "\n" + b
+                    + "kb_base=" + std::to_string(o->kb_base.load()) + "\n";
     for (int i = 0; i < CC_SLOTS; i++)
         if (o->slot_cc[i] >= 0) s += "cc" + std::to_string(o->slot_cc[i]) + "=" + std::to_string(o->cc_val[i].load()) + "\n";
     return s;
@@ -763,6 +849,7 @@ void restore_state(Inst *o, const char *text) {
     o->tuning_freq = float(std::max(300.0, std::min(500.0, num("tuning_freq", 440))));
     o->tuning_preset = clampi(int(num("tuning_preset", 7)), 0, N_TUNING - 1);
     o->stretch = float(std::max(0.0, std::min(1.0, num("stretch", 0))));
+    o->kb_base = clampi(int(num("kb_base", 48)), 0, 96) / 12 * 12;
     int vol = clampi(int(num("volume", 100)), 0, 127), pan = clampi(int(num("pan", 64)), 0, 127);
     std::map<int, int> ccs;
     for (auto &p : kv)
@@ -829,6 +916,13 @@ int get_param(void *inst, const char *key, char *buf, int len) {
         return put(buf, len, sw < 0 ? std::string("") : note_name(sw));
     }
     if (!std::strcmp(key, "memory")) return put(buf, len, memory_text(o->mem_bytes));
+    if (int k = kb_offset(key); k >= 0) {
+        int note = o->kb_base + k;
+        bool ok = note >= 0 && note <= 127;
+        if (std::strstr(key, "_on")) return puti(buf, len, ok && (o->held[note] || o->tap_lit[note]) ? 1 : 0);
+        if (ok && note % 12 == 0) return std::snprintf(buf, size_t(len), "C%d", note / 12 - 1);   // the C keys' octave
+        return put(buf, len, " ");
+    }
     std::lock_guard<std::mutex> l(o->ui_m);
     if (int r = br_row_of(key); r >= 0) {
         int i = o->br_top + r;
