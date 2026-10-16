@@ -114,6 +114,9 @@ Nothing here ran on a Gen2 device; QEMU 8.2 user mode (`qemu-aarch64`) on x86 th
 3. Host test PASSED (its known `note 60` warn); `tools/test_arm.sh` on both builds: load, play, defaults and close as
    before; both `.so` still need glibc 2.27 at most. Screen mock of the open browser: `docs/browser.png`. No new touch
    overlaps in the skin build.
+4. Navigation arrows: the file box's ‹ › ⌄ are 44 × 44 touch targets (were 32 × 36) with 25 px, 2.8 px-wide chevrons
+   (the file name readout narrowed from 490 to 444 px to make room); the browser's page arrows use the same chevrons.
+   No new touch overlaps; screenshots in `docs/` patched to match (`screen*.png`, `compare.png`, the banner).
 
 ## CPU per voice (2026-10-16, both builds, the same method)
 Instructions per voice per 128-frame block, Salamander Grand Piano V3 (WAV), 16 held voices, 1500 blocks minus a run

@@ -440,14 +440,15 @@ def write_layout(a):
     o(L("art", 'file="%s"' % a["bg"], "x=0 y=%d w=1280 h=628 fit=stretch" % YOFF))
     fy = FILEBOX[1]
     # file box
-    o(L("readout", "cx=%d cy=%d w=%d h=40" % (FX + 245, ly(fy + ROW1), 490), 'label=""', "key=file_name",
+    o(L("readout", "cx=%d cy=%d w=%d h=40" % (FX + 222, ly(fy + ROW1), 444), 'label=""', "key=file_name",
         "tsize=42 tfont=Roboto tcolor=ffffff talign=left"))
-    o(L("button", "cx=%d cy=%d" % (FX2 - 82, ly(fy + ROW1)), 'label=""', "key=file_prev",
-        "img=%s img_on=%s w=32 h=36" % a["prev"]))
-    o(L("button", "cx=%d cy=%d" % (FX2 - 48, ly(fy + ROW1)), 'label=""', "key=file_next",
-        "img=%s img_on=%s w=32 h=36" % a["next"]))
-    o(L("toggle", "cx=%d cy=%d" % (FX2 - 14, ly(fy + ROW1)), 'label=""', "key=browse",
-        "img=%s img_on=%s w=32 h=36 ns=0" % a["chev"]))
+    # ‹ › ⌄: 44 px touch targets (were 32 x 36), with larger, thicker chevrons
+    o(L("button", "cx=%d cy=%d" % (FX2 - 114, ly(fy + ROW1)), 'label=""', "key=file_prev",
+        "img=%s img_on=%s w=44 h=44" % a["prev"]))
+    o(L("button", "cx=%d cy=%d" % (FX2 - 66, ly(fy + ROW1)), 'label=""', "key=file_next",
+        "img=%s img_on=%s w=44 h=44" % a["next"]))
+    o(L("toggle", "cx=%d cy=%d" % (FX2 - 18, ly(fy + ROW1)), 'label=""', "key=browse",
+        "img=%s img_on=%s w=44 h=44 ns=0" % a["chev"]))
     o(L("art", 'file="%s"' % a["ks_badge"], "x=%d y=%d w=84 h=34" % (FX, ly(fy + ROW2 - 17)), "when=has_sw:On"))
     o(L("readout", "cx=%d cy=%d w=84 h=34" % (FX + 42, ly(fy + ROW2)), 'label=""', "key=ks_badge",
         "tsize=33 tfont=Roboto tcolor=000000", "when=has_sw:On"))
@@ -549,13 +550,13 @@ def main():
     a["knob_light"] = knob_strip("knob_light.png", CC_R, False)
     a["knob_light_s"] = knob_strip("knob_light_s.png", 22, False)
     a["blank"] = blank_strip("knob_blank.png", 36, 36)
-    a["prev"] = tuple(icon_button("prev", 32, 36, lambda c, x, y, col: chevron(c, x, y, 18, "left", col)))
-    a["next"] = tuple(icon_button("next", 32, 36, lambda c, x, y, col: chevron(c, x, y, 18, "right", col)))
-    a["chev"] = tuple(icon_button("chevron", 32, 36, lambda c, x, y, col: chevron(c, x, y, 18, "down", col)))
+    a["prev"] = tuple(icon_button("prev", 44, 44, lambda c, x, y, col: chevron(c, x, y, 25, "left", col, 2.8)))
+    a["next"] = tuple(icon_button("next", 44, 44, lambda c, x, y, col: chevron(c, x, y, 25, "right", col, 2.8)))
+    a["chev"] = tuple(icon_button("chevron", 44, 44, lambda c, x, y, col: chevron(c, x, y, 25, "down", col, 2.8)))
     a["home"] = tuple(icon_button("home", BR_BTN, BR_BTN, lambda c, x, y, col: house(c, x, y, col, 1.3)))
     a["up"] = tuple(icon_button("up", BR_BTN, BR_BTN, lambda c, x, y, col: folder_up(c, x, y, col, 1.3)))
-    a["pgup"] = tuple(icon_button("pgup", BR_BTN, BR_BTN, lambda c, x, y, col: chevron(c, x, y, 21, "up", col, 2.6)))
-    a["pgdn"] = tuple(icon_button("pgdn", BR_BTN, BR_BTN, lambda c, x, y, col: chevron(c, x, y, 21, "down", col, 2.6)))
+    a["pgup"] = tuple(icon_button("pgup", BR_BTN, BR_BTN, lambda c, x, y, col: chevron(c, x, y, 25, "up", col, 2.8)))
+    a["pgdn"] = tuple(icon_button("pgdn", BR_BTN, BR_BTN, lambda c, x, y, col: chevron(c, x, y, 25, "down", col, 2.8)))
     a["reset"] = tuple(icon_button("reset", 30, 28, cross, bg=DARK))
     a["check"] = tuple(checkbox())
     browser_tile()

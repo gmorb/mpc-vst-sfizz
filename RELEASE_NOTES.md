@@ -19,6 +19,8 @@ parameters and ID on both: projects move between generations.
   and the tuning presets open with taller rows (46 px, was 40), bigger text (20 px, was about 13) and wider cells.
 - **Larger SFZ browser**: six rows per page instead of eight, each 43 px tall (was 32) with bigger text, and larger
   Home, Up and page buttons and path line: easier to read and to hit.
+- **Larger navigation arrows**: the file box's ‹ › ⌄ and the browser's page arrows are 44 px touch targets with
+  bigger, bolder chevrons (the file box's were 32 × 36).
 - **Standalone zip** for `vstscanner.sh` setups: `sfizz-for-MPC-OS-1.0.4.zip`, the Gen1 plugin as a plain folder with a
   README for MockbaMod and other firmware, `NOTICE.md` and every component's licence.
 

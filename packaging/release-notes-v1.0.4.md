@@ -38,6 +38,7 @@ then Default).
 - **Instruments tile**: sfizz shows as an artwork tile in Sounds › INSTRUMENTS (tap it, then Default).
 - **Larger drop-down lists**: taller rows, bigger text and wider cells in every option list, easier to read and hit.
 - **Larger SFZ browser** (the file box's ⌄): six bigger rows per page, bigger text and buttons.
+- **Larger navigation arrows**: the file box's ‹ › ⌄ and the browser's page arrows are bigger and easier to hit.
 - **Standalone zip** for `vstscanner.sh` setups, with a README for MockbaMod and other firmware.
 
 Full history: [RELEASE_NOTES.md](https://github.com/gmorb/mpc-vst-sfizz/blob/v1.0.4/RELEASE_NOTES.md). Tests:
@@ -45,9 +46,9 @@ Full history: [RELEASE_NOTES.md](https://github.com/gmorb/mpc-vst-sfizz/blob/v1.
 
 ## SHA-256
 ```
-c3a1e88c43d0b531bcb4ea2b1a965acce090fdf574e606c5a4bf4fed65847569  sfizz-1.0.4-mpc-armv7.zip
-39231a313ed8af9703ed650e8a196ccda46a2bf578cfd33128f9d964caa888da  sfizz-1.0.4-mpc-aarch64.zip
-6db86546d7c4b21f076de012fed8c3090482c928cdc487a79e82e3b9e6f71cf4  sfizz-for-MPC-OS-1.0.4.zip
+46cb44739ee07a0eff5fc51eaeea72cc368681ab0baa6c44cdb710f3cf5f6789  sfizz-1.0.4-mpc-armv7.zip
+03aadba948791f18bd3e845e234cac3e2d2e93ff616159eb0211b4403a98cffc  sfizz-1.0.4-mpc-aarch64.zip
+d4a9042bb9a8f7564149ca792d3f80bcb3a097313d4ddce435f71e7b16621efa  sfizz-for-MPC-OS-1.0.4.zip
 ```
 
 sfizz is by the sfztools contributors; this is an unofficial port (BSD-2-Clause), not affiliated with inMusic or Akai.
