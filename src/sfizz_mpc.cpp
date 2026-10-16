@@ -178,7 +178,7 @@ struct Inst {
     // values set from the screen (applied by render() or by a worker job)
     std::atomic<int> volume{100}, pan{64};
     std::atomic<int> polyphony_idx{6}, oversampling_idx{0}, preload_idx{3}, sustain_cancels{0};
-    std::atomic<int> sample_quality{3}, osc_quality{1}, root_note{0}, root_oct{5}, tuning_preset{7};
+    std::atomic<int> sample_quality{1}, osc_quality{1}, root_note{0}, root_oct{5}, tuning_preset{7};
     std::atomic<float> tuning_freq{440.0f}, stretch{0.0f};
     std::atomic<int> cc_val[CC_SLOTS];
     std::atomic<int> browse{0};
@@ -551,8 +551,8 @@ void *create(const char *data_dir) {
     o->synth.setSamplesPerBlock(BLOCK);
     o->synth.setNumVoices(64);
     o->synth.setPreloadSize(8192);
-    o->synth.setSampleQuality(sfz::Sfizz::ProcessLive, 3);
-    o->synth.setSampleQuality(sfz::Sfizz::ProcessFreewheeling, 3);
+    o->synth.setSampleQuality(sfz::Sfizz::ProcessLive, 1);   // Linear: the lightest on the CPU that still interpolates
+    o->synth.setSampleQuality(sfz::Sfizz::ProcessFreewheeling, 1);
     o->synth.setOscillatorQuality(sfz::Sfizz::ProcessLive, 1);
     o->synth.setOscillatorQuality(sfz::Sfizz::ProcessFreewheeling, 1);
     o->client = o->synth.createClient(o);
@@ -695,6 +695,18 @@ int cc_slot_of(const char *key) {   // "cc_3" -> 2
     return n >= 0 && n < CC_SLOTS ? n : -1;
 }
 
+// A browsing action (row, up, home, page, previous/next file) is taken only if none was taken, and no new listing
+// appeared, in the last NAV_GUARD_MS. On the device one tap could act twice (reported twice, 1.0.2 and 1.0.3 with a
+// 350 ms window); the likely cause is MPC rebuilding the screen after the change while the finger is still down, so the
+// control now under it fires again. Deliberate taps in the browser come further apart than this.
+constexpr int NAV_GUARD_MS = 700;
+bool nav_ok(Inst *o) {
+    long long now = now_ms();
+    if (now - o->br_last_ms.load() < NAV_GUARD_MS) return false;
+    o->br_last_ms = now;
+    return true;
+}
+
 int br_row_of(const char *key) {   // "br_5" -> 4
     if (std::strncmp(key, "br_", 3) || !std::isdigit(static_cast<unsigned char>(key[3]))) return -1;
     int n = std::atoi(key + 3) - 1;
@@ -737,15 +749,14 @@ void set_param(void *inst, const char *key, const char *val) {
         // One tap, one action. A row's value 0 is the echo of it turning off (or a stale toggle), not a tap; and a tap
         // that arrives right after a new listing appeared, or acts on a listing that has changed since, is the same
         // finger landing on the next folder's row (it opened two folders, or a folder and a file, at once).
-        if (!trig(val)) return;
-        long long now = now_ms();
-        if (now - o->br_last_ms.load() < 350) return;
-        o->br_last_ms = now;
+        if (!trig(val) || !nav_ok(o)) return;
         unsigned gen = o->br_gen.load();
         push_job(o, [o, r, gen] { if (o->br_gen.load() == gen) browse_tap(o, r); });
         return;
     }
     if (!trig(val)) return;   // the rest are triggers
+    // browsing and file stepping: one action per finger (see nav_ok)
+    if ((!std::strcmp(key, "file_prev") || !std::strcmp(key, "file_next") || !std::strncmp(key, "br_", 3)) && !nav_ok(o)) return;
     if (!std::strcmp(key, "file_prev")) push_job(o, [o] { step_file(o, -1); });
     else if (!std::strcmp(key, "file_next")) push_job(o, [o] { step_file(o, +1); });
     else if (!std::strcmp(key, "scala_prev")) push_job(o, [o] { step_scala(o, -1); });
@@ -799,7 +810,7 @@ void restore_state(Inst *o, const char *text) {
     o->oversampling_idx = clampi(int(num("oversampling", 0)), 0, 3);
     o->preload_idx = clampi(int(num("preload", 3)), 0, 6);
     o->sustain_cancels = int(num("sustain_cancels", 0)) ? 1 : 0;
-    o->sample_quality = clampi(int(num("sample_quality", 3)), 0, 10);
+    o->sample_quality = clampi(int(num("sample_quality", 1)), 0, 10);
     o->osc_quality = clampi(int(num("osc_quality", 1)), 0, 3);
     o->root_note = clampi(int(num("root_note", 0)), 0, 11);
     o->root_oct = clampi(int(num("root_oct", 5)), 0, 10);
