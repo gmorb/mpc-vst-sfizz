@@ -53,7 +53,7 @@ figcaption { font-size: 8.8pt; color: #5b6164; margin-top: 3pt; }
       <div class="sub">User manual · version 1.0.4</div>
     </div>
     <figure style="margin-top:14pt"><img src="../screen.png" alt="The sfizz screen on the MPC"></figure>
-    <p>The sfizz 1.2.3 SFZ sampler as a native instrument plugin for Gen1 MPC OS hardware, on a one-page screen
+    <p>The sfizz 1.2.3 SFZ sampler as a native instrument plugin for MPC OS hardware, Gen1 and Gen2, on a one-page screen
     modelled on sfizz's own editor. Play SFZ libraries straight from SD cards and USB drives, streamed from disk, with
     key switches, the instrument's own controls on knobs, Scala tunings and high-quality interpolation.</p>
   </div>
@@ -81,8 +81,14 @@ figcaption { font-size: 8.8pt; color: #5b6164; margin-top: 3pt; }
 <div>
 <h2>1. Requirements</h2>
 <ul>
-  <li><b>A Gen1 MPC OS device</b> (32-bit ARM): Force, MPC Live, Live II, One, X or Key 61. Gen2 devices (MPC Live III,
-  64-bit) are not supported by this release; the installer refuses them.</li>
+  <li><b>An MPC OS device</b>, either generation, each with its own zip:
+  <table style="margin:6pt 0">
+    <tr><th>Generation</th><th>Devices</th><th>Zip</th></tr>
+    <tr><td><b>Gen1</b> (RK3288, 32-bit)</td><td>Force, MPC Live, Live II, One, X, Key 61</td><td><code>sfizz-1.0.4-mpc-armv7.zip</code></td></tr>
+    <tr><td><b>Gen2</b> (RK3588, 64-bit)</td><td>MPC Live III and other RK3588 units</td><td><code>sfizz-1.0.4-mpc-aarch64.zip</code></td></tr>
+  </table>
+  The installer checks that the zip matches the device and names the right one if it doesn't. The Gen2 build is new in
+  this release and has been tested offline only so far.</li>
   <li><b>MPC OS 3.x.</b> The screen uses the 3.x skin format.</li>
   <li><b>Root shell access (SSH)</b> to the device. Stock MPC OS doesn't offer this: the device must be modded. The
   installer edits MPC's settings file to register the plugin.</li>
@@ -94,14 +100,18 @@ figcaption { font-size: 8.8pt; color: #5b6164; margin-top: 3pt; }
 <h2 style="margin-top:16pt">2. Installing and uninstalling</h2>
 <h3>Scripted install (recommended)</h3>
 <ol>
-  <li>Download <code>sfizz-1.0.4-mpc-armv7.zip</code> from the project's GitHub Releases page and unzip it on your computer.</li>
+  <li>Download the zip for your device (<code>sfizz-1.0.4-mpc-armv7.zip</code> for Gen1,
+  <code>sfizz-1.0.4-mpc-aarch64.zip</code> for Gen2) from the project's GitHub Releases page and unzip it on your computer.
+  Both unzip to a folder named <code>sfizz-1.0.4</code>.</li>
   <li>Copy the whole folder to the device:<pre>scp -r sfizz-1.0.4 root@&lt;device-ip&gt;:/tmp/</pre></li>
   <li>Run the installer:<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.4/install.sh</pre></li>
 </ol>
 <p>The installer checks the device, asks for confirmation, <b>stops MPC</b> (save your project first), copies the plugin
 folder to <code>/sdcard/Synths/sfztools - VST - sfizz/</code>, backs up <code>MPC.settings</code>, adds sfizz to MPC's
 plugin list and starts MPC again. <code>-y</code> skips the question; <code>-t &lt;folder&gt;</code> installs into another
-Synths folder (for example on a card). Running it again upgrades in place.</p>
+Synths folder (for example on a card; on Gen2 an internal Synths folder may be read-only, so a card or drive's
+<code>Synths</code> folder may be needed). Running it again upgrades in place. The MPC OS plugin catalog's installers
+(the <code>mpc-store.sh</code> command and the desktop app) pick the right zip for the device by themselves.</p>
 <h3>Manual install</h3>
 <p>The zip's <code>INSTALL.md</code> lists the manual steps: copy the plugin folder, stop MPC, back up and edit
 <code>MPC.settings</code>, start MPC.</p>
@@ -206,7 +216,7 @@ Volume and Pan knobs. A controller that doesn't fit still works from MIDI.</p>
 <h2>7. Settings reference</h2>
 <table>
   <tr><th style="width:24%">Setting</th><th style="width:26%">Values (default in bold)</th><th>What it does</th></tr>
-  <tr><td class="k">Max (voices)</td><td>1, 2, 4, 8, 16, 32, <b>64</b>, 96, 128, 160, 192, 224, 256</td><td>How many voices can sound at once.
+  <tr><td class="k">Max (voices)</td><td>1, 2, 4, 8, 16, 32, <b>64</b> (Gen1), <b>96</b> (Gen2), 128, 160, 192, 224, 256</td><td>How many voices can sound at once.
   Lower it if the device runs out of CPU with dense playing.</td></tr>
   <tr><td class="k">Volume</td><td>0–127 (<b>the instrument's default</b>, often 100)</td><td>MIDI CC 7 to the instrument.</td></tr>
   <tr><td class="k">Pan</td><td>0–127 (<b>64</b>, centre)</td><td>MIDI CC 10 to the instrument.</td></tr>
@@ -217,9 +227,9 @@ Volume and Pan knobs. A controller that doesn't fit still works from MIDI.</p>
   up heavily pitched sounds, but multiplies memory and load time. Changing it reloads the samples.</td></tr>
   <tr><td class="k">Sustain cancels release</td><td><b>Off</b>, On</td><td>sfizz's option of the same name: decides whether
   holding the sustain pedal cancels release samples, as some other SFZ players do.</td></tr>
-  <tr><td class="k">Sample (quality)</td><td>Nearest, <b>Linear</b>, Polynomial, Sinc 8, Sinc 12, 16, 24, 36, 48, 60, 72</td><td>How
+  <tr><td class="k">Sample (quality)</td><td>Nearest, <b>Linear</b> (Gen1), Polynomial, <b>Sinc 8</b> (Gen2), Sinc 12, 16, 24, 36, 48, 60, 72</td><td>How
   samples are resampled when played at another pitch or sample rate. Higher is cleaner and costs more CPU (section 10).</td></tr>
-  <tr><td class="k">Oscillator (quality)</td><td>Nearest, <b>Linear</b>, High, Dual-High</td><td>The same for sfizz's built-in
+  <tr><td class="k">Oscillator (quality)</td><td>Nearest, <b>Linear</b> (Gen1), <b>High</b> (Gen2), Dual-High</td><td>The same for sfizz's built-in
   waveforms (<code>*sine</code>, <code>*saw</code> and wavetables).</td></tr>
   <tr><td class="k">Scala file</td><td><b>DefaultScale</b> (equal temperament), files in <code>sfizz/Scales</code></td><td>Tap to step
   to the next scale; × goes back to equal temperament.</td></tr>
@@ -256,7 +266,7 @@ of the Volume, Pan and Controls knobs. When the project loads, the instrument lo
 
 <div class="section">
 <h2>10. Performance and sound quality</h2>
-<p>The Gen1 MPC's processor is shared by every track and plugin. What costs CPU in sfizz, from most to least:</p>
+<p>The MPC's processor is shared by every track and plugin. What costs CPU in sfizz, from most to least:</p>
 <ul>
   <li><b>Voices sounding</b>: sustained piano chords with the pedal down can use dozens. Lower <b>Max</b> if needed.</li>
   <li><b>Sample quality</b>: per voice, Sinc 8 costs about 10% more than Polynomial, Sinc 24 nearly 5× Polynomial,
@@ -267,25 +277,34 @@ of the Volume, Pan and Controls knobs. When the project loads, the instrument lo
 on a high-priority thread, and keeps it in memory with no limit; on the MPC that briefly maxed out the processor on every
 note with large libraries, and long sessions of chords could run out of memory. This port reads files gradually instead,
 a little ahead of what is playing, at normal priority, within a memory budget (a third of the memory free when the
-plugin starts, between 48 and 384 MB). Files no note uses are released after a few seconds. If the budget runs out
+plugin starts, between 48 and 384 MB on Gen1 and up to 1 GB on Gen2). Files no note uses are released after a few seconds. If the budget runs out
 (very many long notes at once), the notes that have played longest fade out quickly, as when sfizz runs out of voices,
 so new notes always sound. The sound is otherwise exactly the same.</p>
-<p>Sample and Oscillator quality start at <b>Linear</b>, the lightest setting that still interpolates, so a new sfizz
-leaves the most CPU for everything else. When there's room, raise Sample quality: Polynomial (sfizz's desktop default)
+<p><b>Gen1.</b> Sample and Oscillator quality start at <b>Linear</b>, the lightest setting that still interpolates, so a
+new sfizz leaves the most CPU for everything else. When there's room, raise Sample quality: Polynomial (sfizz's desktop default)
 or Sinc 8 are cleaner on samples played far from their original pitch (in offline measurements Sinc 8 removed about 24 dB
 of interpolation distortion over Polynomial on bright samples pitched down). Samples played near their own pitch, as in
 most multisampled pianos, sound nearly the same at any setting. sfizz keeps samples in 32-bit float, so 24-bit
 libraries keep their full depth. A project keeps the quality it was saved with.</p>
-<div class="note">If you hear crackles: keep Sample quality at Linear, lower Max voices, or check that other plugins
+<p><b>Gen2.</b> The RK3588 has several times the processing power and memory, so a new sfizz there starts at
+<b>Sinc 8</b> sample quality, <b>High</b> oscillator quality and <b>96</b> voices, keeps up to 1 GB of decoded samples
+and reads 2 seconds ahead of each note (Gen1: 1.25 s), which gives slow cards and drives more slack. In offline
+measurements Sinc 8 costs about 1.3 times Linear's CPU per voice on Gen2, still about a third of what desktop sfizz
+needs on the same processor. A project made on one generation opens on the other with its own settings.</p>
+
+<div class="note">If you hear crackles: lower Sample quality (Linear is the lightest), lower Max voices, or check that other plugins
 on the project aren't already using most of the CPU. If note starts drop out on a slow card, raise Preload size.</div>
+<figure style="margin-top:8pt"><img style="width:74%" src="../images/cpu.png" alt="CPU per voice chart"><figcaption>Work per voice, desktop sfizz 1.2.3 against
+this port, on both generations (measured offline under emulation; lower is better).</figcaption></figure>
 
 </div>
-<div class="section">
-<h2>11. Troubleshooting</h2>
+<div>
+<h2 style="margin-top:18pt">11. Troubleshooting</h2>
 <table>
   <tr><th style="width:34%">Problem</th><th>What to do</th></tr>
-  <tr><td>sfizz isn't in the plugin browser</td><td>Run <code>install.sh</code> again and let MPC restart. Check the device is
-  Gen1 and on MPC OS 3.x.</td></tr>
+  <tr><td>sfizz isn't in the plugin browser</td><td>Run <code>install.sh</code> again and let MPC restart. Check the zip
+  matches the device (armv7 for Gen1, aarch64 for Gen2) and that it runs MPC OS 3.x.</td></tr>
+  <tr><td>The installer refuses the zip</td><td>It is the other generation's build: download the zip it names.</td></tr>
   <tr><td>The screen is empty or wrong</td><td>MPC OS 2.x can't read this skin: update to 3.x.</td></tr>
   <tr><td>An instrument loads but some notes are silent</td><td>Samples are missing: copy the whole instrument folder, keeping
   its layout. Check that sample file names match the <code>.sfz</code> exactly.</td></tr>

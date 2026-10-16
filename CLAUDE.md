@@ -1,7 +1,7 @@
 # sfizz for MPC OS: agent guide
 
-The sfizz 1.2.3 SFZ engine as a VST2 instrument for Gen1 MPC OS hardware (armv7), built on
-[mpc-vst-plugins](https://github.com/sd88me/mpc-vst-plugins) (the "kit"). This file is the working guide for anyone, agent
+The sfizz 1.2.3 SFZ engine as a VST2 instrument for MPC OS hardware, Gen1 (armv7, RK3288) and Gen2 (aarch64, RK3588),
+built on [mpc-vst-plugins](https://github.com/sd88me/mpc-vst-plugins) (the "kit"). This file is the working guide for anyone, agent
 or person, who builds, tests, releases or lists it. Read the kit's own `CLAUDE.md`, `docs/PORTING.md`, `docs/RELEASING.md`
 and `catalog/README.md` too; this file adds what is specific to this port.
 
@@ -11,11 +11,12 @@ and `catalog/README.md` too; this file adds what is specific to this port.
 | Repo | `gmorb/mpc-vst-sfizz` (if renamed: update `packaging/catalog/sfizz.json`, README, the `--repo` below) |
 | Plugin name / vendor | `sfizz` / `sfztools` → plugin folder `sfztools - VST - sfizz` |
 | `.so` / uid | `sfizz_mpc.so` / `SfzM` (0x53667a4d). Never change: projects find the plugin by uid |
-| Catalog id | `sfizz`; entry `packaging/catalog/sfizz.json`; asset `sfizz-<version>-mpc-armv7.zip` |
+| Catalog id | `sfizz`; entry `packaging/catalog/sfizz.json`; assets `sfizz-<version>-mpc-armv7.zip` (Gen1) and `sfizz-<version>-mpc-aarch64.zip` (Gen2), both on the same release |
 | Licence | BSD-2-Clause |
 | Kit commit | `e18a0a1da84515096d354f399dd4cd7f9c079fb5` (build and check against this one) |
 | Engine | sfizz 1.2.3 vendored in `src/sfizz` (`src/VENDORED.md`), local changes in one patch: `patches/0001-sfizz-for-mpc-os.patch` |
-| MPC OS | 3.x only (the skin uses the 3.x format; the `.so` itself needs glibc ≤ 2.27) |
+| MPC OS | 3.x only (the skin uses the 3.x format; each `.so` itself needs glibc ≤ 2.27) |
+| Release guide | `docs/RELEASE_AGENT.md`: the step-by-step GitHub release and catalog listing, with checks |
 
 **Parameter order is frozen** (`params.json`, VST index = position). MPC stores values by index: append new parameters at
 the end, never reorder or remove, and bump the major version if indices ever must change. Index 0 is `stretch` on purpose
@@ -32,28 +33,35 @@ the end, never reorder or remove, and bump the major version if indices ever mus
   the knob, the invisible frequency knob, popup values centred). It exits non-zero if what it patches is missing.
 - `data/` ships as the plugin's `sfizz/` folder: `DefaultInstrument.sfz`, `DefaultScale.scl`, `Instruments/` (user data,
   kept on upgrade), `Scales/`.
-- `tests/vsthost.c` + `tools/test_arm.sh`: the release `.so` through a VST2 host under qemu-arm.
+- `tests/vsthost.c` + `tools/test_arm.sh`: the release `.so` through a VST2 host under qemu-arm (`ARCH=aarch64`:
+  the Gen2 `.so` under qemu-aarch64). `tools/make_images.py`: the README's banner and CPU chart.
   `tools/build_x86_test_libs.sh`: x86 sfizz for the kit's host test. `tools/mock_screen.py`: screen mock with live text.
 
 ## Build
 ```
-pip install ziglang==0.13.0                                  # armhf cross compiler, targets glibc 2.28
+pip install ziglang==0.13.0                                  # cross compiler for armhf and aarch64, targets glibc 2.28
 git clone https://github.com/sd88me/mpc-vst-plugins kit && git -C kit checkout e18a0a1da84515096d354f399dd4cd7f9c079fb5
 export MPC_VST=$PWD/kit HTML_ART_PYTHON=<python with playwright + pillow and a Chromium>
-./build.sh            # skin (design.py -> gen_vst.py -> skin_post.py) and build/sfizz_mpc.so
+./build.sh            # skin (design.py -> gen_vst.py -> skin_post.py), build/sfizz_mpc.so and build/aarch64/sfizz_mpc.so
 ```
+(`./build.sh skin|so|so64` builds one part.)
 Checks after a build (all must hold; show the output):
 ```
 arm-linux-gnueabihf-readelf -h build/sfizz_mpc.so | grep -E "ARM|hard-float"
 arm-linux-gnueabihf-objdump -T build/sfizz_mpc.so | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1    # <= GLIBC_2.31
 arm-linux-gnueabihf-nm -D --defined-only build/sfizz_mpc.so                                     # only VSTPluginMain
 arm-linux-gnueabihf-readelf -d build/sfizz_mpc.so | grep NEEDED                                 # no libstdc++
+aarch64-linux-gnu-readelf -h build/aarch64/sfizz_mpc.so | grep -E "ELF64|AArch64"
+aarch64-linux-gnu-objdump -T build/aarch64/sfizz_mpc.so | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1  # <= GLIBC_2.39
+aarch64-linux-gnu-nm -D --defined-only build/aarch64/sfizz_mpc.so                              # only VSTPluginMain
+aarch64-linux-gnu-readelf -d build/aarch64/sfizz_mpc.so | grep NEEDED                          # no libstdc++
 ```
 
 ## Test (offline first, always)
 ```
 tools/build_x86_test_libs.sh && "$MPC_VST/tools/test_port.sh" vst.json      # must print PASSED
 tools/test_arm.sh [some.sfz ...]                                               # loads, plays, prints the screen's text
+ARCH=aarch64 tools/test_arm.sh [some.sfz ...]                                  # the same for the Gen2 .so (qemu-aarch64)
 "$MPC_VST/tools/studio.py" preview "build/skin/sfztools - VST - sfizz/Plugin Skins" -o build/preview/page_%d.png
 ```
 The host test's `note 60` line may say `warn` (it plays during a voice-count change; see TESTING.md). Anything `FAIL` is a
@@ -62,15 +70,19 @@ failure. Look at every preview image, and at a `tools/mock_screen.py` render, af
 ## Release
 1. Bump `version` in `vst.json` (e.g. 1005 for 1.0.5) and the version below. Update `RELEASE_NOTES.md`.
 2. Build and test as above.
-3. Package with the catalog fields (no other way of making the zip):
+3. Package with the catalog fields (no other way of making the zips), once per `.so` with the same arguments:
    ```
-   python3 "$MPC_VST/tools/release.py" --so build/sfizz_mpc.so --skin "build/skin/sfztools - VST - sfizz" \
-     --entry build/pluginlist-entry.xml --version 1.0.4 --extra data:sfizz --user-data sfizz/Instruments \
-     --repo gmorb/mpc-vst-sfizz --license BSD-2-Clause --id sfizz [--bench build/bench.txt] \
-     --about "The sfizz 1.2.3 SFZ sampler (disk streaming, key switches, CC controls, Scala tuning) with a one-page screen modelled on sfizz's own editor." -o dist
-   python3 "$MPC_VST/tools/catalog_check.py" dist/sfizz-1.0.4-mpc-armv7.zip --catalog --expect-id sfizz --expect-repo gmorb/mpc-vst-sfizz
+   for so in build/sfizz_mpc.so build/aarch64/sfizz_mpc.so; do
+     python3 "$MPC_VST/tools/release.py" --so $so --skin "build/skin/sfztools - VST - sfizz" \
+       --entry build/pluginlist-entry.xml --version 1.0.4 --extra data:sfizz --user-data sfizz/Instruments \
+       --repo gmorb/mpc-vst-sfizz --license BSD-2-Clause --id sfizz \
+       --about "The sfizz 1.2.3 SFZ sampler (disk streaming, key switches, CC controls, Scala tuning) with a one-page screen modelled on sfizz's own editor." -o dist
+   done          # add --bench build/bench.txt to the armv7 one only, if you ran the bench (a Gen1 result)
+   for z in dist/sfizz-1.0.4-mpc-armv7.zip dist/sfizz-1.0.4-mpc-aarch64.zip; do
+     python3 "$MPC_VST/tools/catalog_check.py" $z --catalog --expect-id sfizz --expect-repo gmorb/mpc-vst-sfizz; done
+   (cd dist && sha256sum sfizz-1.0.4-mpc-*.zip > SHA256SUMS)
    ```
-   The check must end `OK: sfizz 1.0.4`.
+   Each check must end `OK: sfizz 1.0.4`.
 4. Device smoke test with that exact zip (TESTING.md, "On the device"). Ask before installing on someone's device: it
    restarts MPC. CPU: `"$MPC_VST/tools/bench.sh" build/sfizz_mpc.so <ip> -j | tee build/bench.txt` with a sampled
    instrument; re-package with `--bench` if you ran it.
@@ -78,12 +90,14 @@ failure. Look at every preview image, and at a `tools/mock_screen.py` render, af
    ```
    git tag v1.0.4 && git push origin main v1.0.4
    gh release create v1.0.4 --repo gmorb/mpc-vst-sfizz --draft --title "sfizz for MPC OS 1.0.4" \
-     --notes-file RELEASE_NOTES.md dist/sfizz-1.0.4-mpc-armv7.zip
+     --notes-file packaging/release-notes-v1.0.4.md \
+     dist/sfizz-1.0.4-mpc-armv7.zip dist/sfizz-1.0.4-mpc-aarch64.zip dist/SHA256SUMS
    gh release view v1.0.4 --repo gmorb/mpc-vst-sfizz --json isDraft,assets,url     # check
    gh release edit v1.0.4 --repo gmorb/mpc-vst-sfizz --draft=false --latest        # only after the device test
    ```
 6. After a device test, add it to `tested.json` (root, default branch), truthfully:
-   `[{"version": "1.0.4", "device": "MPC Live II", "firmware": "3.x.y", "date": "YYYY-MM-DD"}]`.
+   `[{"version": "1.0.4", "device": "MPC Live II", "firmware": "3.x.y", "date": "YYYY-MM-DD"}]`. A test of the Gen2 zip
+   needs "Gen2" in `device` (e.g. `"MPC Live III (Gen2)"`): that is what gives the Verified Gen2 badge.
 
 ## List it in the catalog (first release only)
 ```
@@ -93,10 +107,12 @@ python3 tools/catalog_build.py --check-registry                                 
 curl -sI https://raw.githubusercontent.com/gmorb/mpc-vst-sfizz/v1.0.4/docs/screen.png | head -1    # 200
 git add catalog/plugins/sfizz.json && git commit -m "Add sfizz" && git push -u origin add-sfizz
 gh pr create --repo sd88me/mpc-vst-plugins --head gmorb:add-sfizz --title "Add sfizz" \
-  --body "sfizz 1.0.4: the sfizz 1.2.3 SFZ engine for Gen1 MPC / Force. Release: <the real release URL>"
+  --body "sfizz 1.0.4: the sfizz 1.2.3 SFZ engine for MPC / Force, Gen1 (armv7) and Gen2 (aarch64) zips on one release. Release: <the real release URL>"
 gh pr view --repo sd88me/mpc-vst-plugins --json url,state,number                # check
 ```
-No versions or checksums in the entry: the catalog reads them from the release. Later releases need no PR.
+No versions or checksums in the entry: the catalog reads them from the release. Later releases need no PR. One entry
+covers both builds: the catalog finds the Gen2 zip by swapping `armv7` for `aarch64` in `asset_pattern`. Never add a
+second entry for Gen2.
 The screenshot link is pinned to the tag: it must exist in that tag (`docs/screen.png`).
 
 ## Gotchas (learned building it)
@@ -135,6 +151,13 @@ The screenshot link is pinned to the tag: it must exist in that tag (`docs/scree
 - MIDI during a busy synth: kept through ~90 ms (settings changes), then late note-ons are dropped, note-offs kept.
 - The skin build needs Chromium for Playwright. Where Playwright's CDN is blocked, an npm-shipped Chromium works through a
   `sitecustomize.py` that sets `executable_path` (and `--no-sandbox --single-process --headless=shell`).
+
+- **Gen2 (aarch64)**: every Gen2 difference is behind `#if defined(__aarch64__)` (defaults `DEF_*` and
+  `STREAM_BUDGET_MAX` in `src/sfizz_mpc.cpp`; `reserveLimit` and `kAheadSeconds` in `FilePool.cpp`), so the armv7 `.so`
+  stays byte-identical when only Gen2 changes; check its sha256 against the last release when that is the intent. Keep
+  `DEF_VOICES == POLYPHONY[DEF_POLY_IDX]` (a literal on purpose: indexing the table there changed the armv7 layout).
+  On aarch64 the output is within 3e-8 of upstream, not bit-identical (FMA contraction). Not yet run on a Gen2 device;
+  there is no root route on Gen2 that the kit provides, so testers need their own.
 
 ## Ground rules
 - Never claim a device result you didn't see; say "offline" for QEMU/x86 results. Record device facts in TESTING.md.

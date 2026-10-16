@@ -1,10 +1,18 @@
 # sfizz for MPC OS 1.0.4
 
+**Now for Gen2 too.** This release has two zips: `sfizz-1.0.4-mpc-armv7.zip` for Gen1 (MPC Live / Live II, One, X, Key 61,
+Force; RK3288) and `sfizz-1.0.4-mpc-aarch64.zip` for Gen2 (MPC Live III and other RK3588 units). Same plugin, screen,
+parameters and ID on both: projects move between generations.
+
 ## Changes since 1.0.3
+- **Gen2 (aarch64) build**: a native 64-bit build of the same engine. A new sfizz on Gen2 starts with Sample quality
+  Sinc 8, Oscillator quality High and 96 voices (Gen1: Linear, Linear, 64), may use up to 1 GB for decoded samples
+  (Gen1: 384 MB) and streams 2 s ahead of each note (Gen1: 1.25 s). Measured offline, Sinc 8 costs about 1.3× Linear's
+  CPU per voice there, and about a third of what upstream sfizz needs on the same CPU. Not yet tested on a Gen2 device.
 - **Browser**: a tap still acted twice on the device. Every browsing action (a row, Up, Home, the page arrows, ‹ › in the
   file box) is now taken only if none was taken, and no new folder listing appeared, in the last 0.7 s.
-- **Lighter defaults**: a new sfizz starts with Sample and Oscillator quality at Linear. Raise Sample quality when there
-  is CPU to spare. Projects keep the quality they were saved with.
+- **Lighter defaults on Gen1**: a new sfizz starts with Sample and Oscillator quality at Linear. Raise Sample quality
+  when there is CPU to spare. Projects keep the quality they were saved with.
 - **Instruments tile**: sfizz shows as an artwork tile in Sounds › INSTRUMENTS (tap it, then Default) instead of a plain
   folder.
 

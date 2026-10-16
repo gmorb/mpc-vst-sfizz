@@ -71,6 +71,47 @@ All of the 1.0.0 list again (host test PASSED; `tools/test_arm.sh` with Salamand
 3. Tile: `build.sh` writes `Plugin Skins/browser_images/soundsmode.png` (270x110, `art/tile.png`) and
    `Presets/0000-Default.xpl` (the kit's `xpl.py`, an empty chunk: the engine's defaults); both are in the release zip.
 
+## Offline: the Gen2 (aarch64) build (done for 1.0.4, 2026-10-16)
+Nothing here ran on a Gen2 device; QEMU 8.2 user mode (`qemu-aarch64`) on x86 throughout.
+1. `build.sh so64` → `build/aarch64/sfizz_mpc.so`: ELF64 AArch64, needs glibc 2.27 at most (Gen2's MPC OS 3.x has
+   2.39), exports only VSTPluginMain, NEEDED only libc/libm/libpthread/libdl (no libstdc++). Code for Cortex-A55, which
+   both RK3588 core types run.
+2. `ARCH=aarch64 tools/test_arm.sh tests/keyswitch.sfz "Salamander Grand Piano V3.sfz"`: both load from a restored chunk,
+   play (same levels as the armv7 build: 0.1401 / 0.0339 rms), show the key switch, CC names and pressed key, save a
+   chunk and close cleanly. The defaults line reads `Polyphony=96 Sample=Sinc 8 Oscillator=High` (armv7: `64 Linear Linear`).
+3. Output vs upstream sfizz 1.2.3 built for aarch64 with the same compiler and flags (`det.sfz`, `det_fused.sfz`, plain,
+   pitch-bend and pan sweeps, Nearest to Sinc 24 and Sinc 72): max difference 3e-8, and 1.04e-7 at Sinc 8; `det_fused.sfz`'s
+   pan sweeps bit-identical at every quality but Sinc 8. Unlike armv7 it isn't bit-identical everywhere: on aarch64 the compiler contracts
+   multiply-adds differently in upstream's scalar loops than in the port's NEON ones (rounding order only).
+4. Stress (`tests/offline/stress2.cpp` with UBSan in trap mode, two instances, chords and fast notes with the pedal,
+   instrument switches, preload and voice changes while streaming, closed mid-stream, two rounds), with the default
+   24 MB budget and with `STRESS_BUDGET_MB=1024`: `stress OK`, no traps. Its underrun counts are QEMU's speed (FLAC
+   decoding emulated far slower than real time), not a property of the build.
+5. The armv7 `.so` built from the same tree is byte-identical to the one released as 1.0.4 before the Gen2 build was
+   added (sha256 `d3b1445c…`), and so is its zip: every Gen2 change is behind `#if defined(__aarch64__)`.
+6. Packaging: `release.py` once per `.so` → `sfizz-1.0.4-mpc-armv7.zip` and `sfizz-1.0.4-mpc-aarch64.zip` (manifest
+   `arch: aarch64`, `os_compat: ["3.x"]`); `catalog_check.py --catalog` on each: `OK: sfizz 1.0.4 (0 warnings)`.
+   The kit's own aarch64 host test (`test_port.sh vst.json aarch64`) needs Docker with an arm64 image; not run here.
+
+## CPU per voice (2026-10-16, both builds, the same method)
+Instructions per voice per 128-frame block, Salamander Grand Piano V3 (WAV), 16 held voices, 1500 blocks minus a run
+of 0 blocks, QEMU's `hotblocks` plugin with no block limit, counting the render thread only (sfizz's file-loading
+threads, which upstream loading uses here, are left out). `docs/images/cpu.png` is drawn from this table
+(`tools/make_images.py`).
+
+| Quality | Gen1 upstream | Gen1 port | Gen2 upstream | Gen2 port |
+|---|---|---|---|---|
+| Linear | 34.2 K | 10.8 K | 31.6 K | 9.3 K |
+| Polynomial | 36.5 K | 13.2 K | 33.6 K | 11.2 K |
+| Sinc 8 | 55.9 K | 14.5 K | 39.3 K | 12.0 K |
+| Sinc 12 | | | 43.1 K | 20.7 K |
+| Sinc 24 | 91.2 K | 68.4 K | 83.3 K | 61.0 K |
+| Oscillator (`*saw`), Linear / High / Dual-High | | | | 15.6 / 17.7 / 20.1 K |
+
+The 1.0.1/1.0.2 figures above were taken with the plugin's default 4000-block report and include whatever the loading
+threads ran; these are lower and steadier. Instruction counts compare work, not time: how fast a core gets through them
+(RK3588's A76 and A55 cores, RK3288's A17) still needs a device measurement (`tools/bench.sh` in the kit).
+
 ### The offline harnesses (`tests/offline/`)
 Built against `build/libsfizz_x86_all.a` (from `tools/build_x86_test_libs.sh`) on x86, or against the armhf archives in
 `build/sfizz-armhf` (from `build.sh so`) with `-DAB_MAIN -shared` for ARM, run through `abhost.c` under qemu-arm with
