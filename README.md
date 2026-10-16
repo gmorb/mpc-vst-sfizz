@@ -10,15 +10,15 @@ Requires a modded unit with root access, as every plugin from that project does.
 **Download** the `sfizz-<version>-mpc-armv7.zip` from [Releases](../../releases). **Manual:** [docs/MANUAL.pdf](docs/MANUAL.pdf).
 
 ## Install
-1. Unzip, copy the `sfizz-<version>` folder to the device: `scp -r sfizz-1.0.2 root@<device-ip>:/tmp/`
-2. Run the installer: `ssh root@<device-ip> sh /tmp/sfizz-1.0.2/install.sh` (it stops and restarts MPC: save first).
+1. Unzip, copy the `sfizz-<version>` folder to the device: `scp -r sfizz-1.0.3 root@<device-ip>:/tmp/`
+2. Run the installer: `ssh root@<device-ip> sh /tmp/sfizz-1.0.3/install.sh` (it stops and restarts MPC: save first).
 3. Add **sfizz** to a track from the plugin browser. Tap ⌄ to open an SFZ from an SD card or USB drive.
 
 Requirements: MPC OS 3.x, a Gen1 (32-bit) device, root SSH. The zip's `INSTALL.md` also has the manual steps.
 `uninstall.sh` removes it and keeps the SFZ files you put in its library folder.
 
 ## What's on the page
-sfizz's editor has four tabs; on the MPC they sit side by side on one page, under the same header and over the same piano:
+sfizz's editor has four tabs; on the MPC they sit side by side on one page, under the same header, over a playable keyboard:
 
 | sfizz | Here |
 |---|---|
@@ -29,7 +29,7 @@ sfizz's editor has four tabs; on the MPC they sit side by side on one page, unde
 | Information tab | Left panel: Curves, Masters, Groups, Regions, Samples |
 | Controls tab | Middle panel: the instrument's CC knobs (its `label_cc` names, CC badges), up to 8 |
 | Settings tab | Right panel: Engine options, Rendering quality, Tuning (Scala file, root key, frequency with the historical presets, stretch) |
-| Piano | Same strip, as a picture (it doesn't light up keys) |
+| Piano | Two octaves and a C, playable: keys light while sounding (MIDI or a tap), a tap plays the note (0.6 s), ‹ › shift octaves |
 
 Left out, because they mean nothing on the MPC: the volume meters, Theme, Zoom, the "when freewheeling" quality rows
 (MPC never freewheels), and the file menu's Edit / Create / Open folder entries.

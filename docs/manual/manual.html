@@ -50,7 +50,7 @@ figcaption { font-size: 8.8pt; color: #5b6164; margin-top: 3pt; }
     <div class="band">
       <img src="../../art/logo_text_shaded@2x.png" alt="sfizz">
       <h1>sfizz for MPC OS</h1>
-      <div class="sub">User manual · version 1.0.2</div>
+      <div class="sub">User manual · version 1.0.3</div>
     </div>
     <figure style="margin-top:14pt"><img src="../screen.png" alt="The sfizz screen on the MPC"></figure>
     <p>The sfizz 1.2.3 SFZ sampler as a native instrument plugin for Gen1 MPC OS hardware, on a one-page screen
@@ -94,9 +94,9 @@ figcaption { font-size: 8.8pt; color: #5b6164; margin-top: 3pt; }
 <h2 style="margin-top:16pt">2. Installing and uninstalling</h2>
 <h3>Scripted install (recommended)</h3>
 <ol>
-  <li>Download <code>sfizz-1.0.2-mpc-armv7.zip</code> from the project's GitHub Releases page and unzip it on your computer.</li>
-  <li>Copy the whole folder to the device:<pre>scp -r sfizz-1.0.2 root@&lt;device-ip&gt;:/tmp/</pre></li>
-  <li>Run the installer:<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.2/install.sh</pre></li>
+  <li>Download <code>sfizz-1.0.3-mpc-armv7.zip</code> from the project's GitHub Releases page and unzip it on your computer.</li>
+  <li>Copy the whole folder to the device:<pre>scp -r sfizz-1.0.3 root@&lt;device-ip&gt;:/tmp/</pre></li>
+  <li>Run the installer:<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.3/install.sh</pre></li>
 </ol>
 <p>The installer checks the device, asks for confirmation, <b>stops MPC</b> (save your project first), copies the plugin
 folder to <code>/sdcard/Synths/sfztools - VST - sfizz/</code>, backs up <code>MPC.settings</code>, adds sfizz to MPC's
@@ -106,7 +106,7 @@ Synths folder (for example on a card). Running it again upgrades in place.</p>
 <p>The zip's <code>INSTALL.md</code> lists the manual steps: copy the plugin folder, stop MPC, back up and edit
 <code>MPC.settings</code>, start MPC.</p>
 <h3>Uninstall</h3>
-<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.2/uninstall.sh</pre>
+<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.3/uninstall.sh</pre>
 <p>This removes the plugin folder and its plugin-list entry, and restarts MPC. SFZ files you put in the plugin's
 <code>sfizz/Instruments</code> folder are kept. Projects that used sfizz load without it.</p>
 
@@ -125,7 +125,7 @@ Synths folder (for example on a card). Running it again upgrades in place.</p>
 <div class="section">
 <h2>4. The screen</h2>
 <p>sfizz's desktop editor has four tabs. On the MPC they are side by side on one page: the header, then
-<b>Information</b>, <b>Controls</b> and <b>Settings</b>, then the piano.</p>
+<b>Information</b>, <b>Controls</b> and <b>Settings</b>, then a keyboard you can play.</p>
 <figure><img src="../screen_annotated.png" alt="Annotated screen"><figcaption>The screen with Salamander Grand Piano V3 loaded.</figcaption></figure>
 <ol class="callouts">
   <li><b>File name</b> of the loaded instrument (without <code>.sfz</code>). Shows <i>Loading…</i> while loading.</li>
@@ -138,7 +138,11 @@ Synths folder (for example on a card). Running it again upgrades in place.</p>
   <li><b>Information</b>: the instrument's curves, masters, groups, regions and samples.</li>
   <li><b>Controls</b>: up to eight of the instrument's own controllers, named as the instrument names them, with their CC number.</li>
   <li><b>Settings</b>: engine options, rendering quality and tuning (section 7).</li>
-  <li><b>Piano</b>: the keyboard and octave numbers (middle C is C4). It is a picture: it doesn't light up.</li>
+  <li><b>Keyboard</b>: two octaves and a C. Keys light while they sound, from MIDI (pads, a controller, the sequencer) or
+  from a tap. Tap a key to play it (velocity 100, for 0.6 s; the screen reports a touch, not a finger lifting, so a tap
+  can't be held). Tap a white key below the black keys. <b>‹ ›</b> shift it by an octave; the C keys show their octave
+  (middle C is C4, as sfizz numbers them). Taps play sfizz directly: they don't reach MPC's sequencer, so they aren't
+  recorded. The octave is saved with the project.</li>
 </ol>
 <div class="note">Not on the MPC screen, compared with the desktop editor: the output meters, the Theme and Zoom
 options, the "when freewheeling" quality settings (MPC never freewheels) and the file menu's Edit, Create and Open folder
@@ -152,7 +156,9 @@ entries.</div>
 <ul>
   <li><b>⌂</b> (home) lists the places: <b>Plugin Library</b> (the plugin's own <code>sfizz/Instruments</code> folder),
   every SD card and USB drive, and <code>sdcard</code> (the internal storage).</li>
-  <li>Tap a folder (shown with a trailing <code>/</code>) to open it, and the <b>folder-up</b> button to go back.</li>
+  <li>Tap a folder (shown with a trailing <code>/</code>) to open it, and the <b>folder-up</b> button to go back. A tap acts
+  once: a second touch within a third of a second of a folder opening is ignored, so one tap never opens two
+  things.</li>
   <li>Tap an SFZ file to load it. The loaded file is lit green. The browser stays open so you can try others.</li>
   <li><b>˄ ˅</b> page through long folders, eight rows at a time; the counter shows where you are.</li>
   <li>The bottom line reports the result: the number of regions and samples, or why something didn't load.</li>

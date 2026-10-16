@@ -1,3 +1,16 @@
+# sfizz for MPC OS 1.0.3
+
+The keyboard at the bottom of the screen is now playable, and the SFZ browser no longer acts twice on one tap.
+
+## Changes since 1.0.2
+- **Playable keyboard**: two octaves and a C, shifted by octave with ‹ ›. Keys light while they sound, from MIDI or a
+  tap; a tap plays the note at velocity 100 for 0.6 s (MPC reports a screen touch, not the finger lifting). Taps play
+  sfizz directly and aren't recorded by MPC's sequencer. The octave is saved with the project. It replaces the full
+  128-key picture, whose keys were too narrow to touch.
+- **Browser**: one tap, one action. A tap that landed as a new folder appeared could act again on the new folder's row
+  (open a folder and then whatever was under the finger). Taps within a third of a second of a new listing, taps made on
+  a listing that has since changed, and a row's switch-off echo are now ignored.
+
 # sfizz for MPC OS 1.0.2
 
 About 28% less CPU per voice than 1.0.1, with the same output: bit-identical to 1.0.1 at every sample quality (and to
@@ -45,7 +58,7 @@ The [sfizz](https://github.com/sfztools/sfizz) 1.2.3 SFZ sampler as a native ins
 - Root shell access (a modded unit): the installer edits `MPC.settings`.
 
 ## Install
-Copy the unzipped `sfizz-1.0.2` folder to the device and run `sh install.sh` as root (it stops and restarts MPC: save your
+Copy the unzipped `sfizz-1.0.3` folder to the device and run `sh install.sh` as root (it stops and restarts MPC: save your
 project first). Full steps, including a manual install, are in the zip's `INSTALL.md` and in `docs/MANUAL.pdf`.
 
 ## Tested
