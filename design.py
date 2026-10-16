@@ -61,8 +61,11 @@ SET_W = 238
 VOL_CX = (VOLBOX[0] + 95, VOLBOX[0] + 255)
 VOL_R = 26
 
-BR_ROWS, BR_TH, BR_GAP = 8, 32, 4
-BR_LIST_Y = BROWSER[1] + 58
+# The browser is sized for fingers: 6 rows of 43 px (the engine's BR_ROWS must match), 44 px header buttons.
+BR_ROWS, BR_TH, BR_GAP = 6, 43, 4
+BR_HEAD = 58                        # header height: buttons and path above the rule, the list below it
+BR_LIST_Y = BROWSER[1] + BR_HEAD + 8
+BR_BTN = 44
 
 
 def font(px):
@@ -317,7 +320,7 @@ def browser_panel():
     x, y, w, h = BROWSER
     c = Canvas(w, h)
     c.rrect(0, 0, w, h, 8, DARK)
-    c.line([(16, 50), (w - 16, 50)], WHITE, 1.4)
+    c.line([(16, BR_HEAD), (w - 16, BR_HEAD)], WHITE, 1.4)
     return c.save("browser.png")
 
 
@@ -393,16 +396,17 @@ def pill_button(name, w, h, fill):
     return out
 
 
-def house(c, cx, cy, col):
-    c.line([(cx - 9, cy - 1), (cx, cy - 9), (cx + 9, cy - 1)], col, 2.2)
-    c.line([(cx - 6, cy - 3), (cx - 6, cy + 8), (cx + 6, cy + 8), (cx + 6, cy - 3)], col, 2.2)
+def house(c, cx, cy, col, k=1.0):
+    P = lambda pts: [(cx + x * k, cy + y * k) for x, y in pts]
+    c.line(P([(-9, -1), (0, -9), (9, -1)]), col, 2.2 * k)
+    c.line(P([(-6, -3), (-6, 8), (6, 8), (6, -3)]), col, 2.2 * k)
 
 
-def folder_up(c, cx, cy, col):
-    c.line([(cx - 10, cy - 5), (cx - 10, cy + 8), (cx + 10, cy + 8), (cx + 10, cy - 3), (cx, cy - 3), (cx - 3, cy - 7),
-            (cx - 10, cy - 7), (cx - 10, cy - 5)], col, 1.8)
-    c.line([(cx, cy + 5), (cx, cy - 1)], col, 1.8)
-    c.line([(cx - 3, cy + 2), (cx, cy - 1), (cx + 3, cy + 2)], col, 1.8)
+def folder_up(c, cx, cy, col, k=1.0):
+    P = lambda pts: [(cx + x * k, cy + y * k) for x, y in pts]
+    c.line(P([(-10, -5), (-10, 8), (10, 8), (10, -3), (0, -3), (-3, -7), (-10, -7), (-10, -5)]), col, 1.8 * k)
+    c.line(P([(0, 5), (0, -1)]), col, 1.8 * k)
+    c.line(P([(-3, 2), (0, -1), (3, 2)]), col, 1.8 * k)
 
 
 def cross(c, cx, cy, col):
@@ -508,23 +512,24 @@ def write_layout(a):
     # SFZ browser (over Information + Controls while open)
     bx, by, bw, bh = BROWSER
     o(L("art", 'file="%s"' % a["browser"], "x=%d y=%d w=%d h=%d" % (bx, ly(by), bw, bh), "when=browse:On"))
-    o(L("button", "cx=%d cy=%d" % (bx + 30, ly(by + 26)), 'label=""', "key=br_home",
-        "img=%s img_on=%s w=36 h=36" % a["home"], "when=browse:On"))
-    o(L("button", "cx=%d cy=%d" % (bx + 72, ly(by + 26)), 'label=""', "key=br_up",
-        "img=%s img_on=%s w=36 h=36" % a["up"], "when=browse:On"))
-    o(L("readout", "cx=%d cy=%d w=%d h=34" % (bx + 96 + 210, ly(by + 26), 420), 'label=""', "key=br_loc",
-        "tsize=28 tfont=Roboto tcolor=ffffff talign=left", "when=browse:On"))
-    o(L("readout", "cx=%d cy=%d w=120 h=30" % (bx + bw - 160, ly(by + 26)), 'label=""', "key=br_page",
-        "tsize=22 tfont=Roboto tcolor=b2b2b2 talign=right", "when=browse:On"))
-    o(L("button", "cx=%d cy=%d" % (bx + bw - 76, ly(by + 26)), 'label=""', "key=br_pgup",
-        "img=%s img_on=%s w=34 h=34" % a["pgup"], "when=browse:On"))
-    o(L("button", "cx=%d cy=%d" % (bx + bw - 38, ly(by + 26)), 'label=""', "key=br_pgdn",
-        "img=%s img_on=%s w=34 h=34" % a["pgdn"], "when=browse:On"))
+    hy = by + BR_HEAD // 2   # the header row's centre
+    o(L("button", "cx=%d cy=%d" % (bx + 32, ly(hy)), 'label=""', "key=br_home",
+        "img=%s img_on=%s w=%d h=%d" % (a["home"] + (BR_BTN, BR_BTN)), "when=browse:On"))
+    o(L("button", "cx=%d cy=%d" % (bx + 82, ly(hy)), 'label=""', "key=br_up",
+        "img=%s img_on=%s w=%d h=%d" % (a["up"] + (BR_BTN, BR_BTN)), "when=browse:On"))
+    o(L("readout", "cx=%d cy=%d w=%d h=40" % (bx + 112 + 185, ly(hy), 370), 'label=""', "key=br_loc",
+        "tsize=32 tfont=Roboto tcolor=ffffff talign=left", "when=browse:On"))
+    o(L("readout", "cx=%d cy=%d w=110 h=34" % (bx + bw - 162, ly(hy)), 'label=""', "key=br_page",
+        "tsize=24 tfont=Roboto tcolor=b2b2b2 talign=right", "when=browse:On"))
+    o(L("button", "cx=%d cy=%d" % (bx + bw - 82, ly(hy)), 'label=""', "key=br_pgup",
+        "img=%s img_on=%s w=%d h=%d" % (a["pgup"] + (BR_BTN, BR_BTN)), "when=browse:On"))
+    o(L("button", "cx=%d cy=%d" % (bx + bw - 32, ly(hy)), 'label=""', "key=br_pgdn",
+        "img=%s img_on=%s w=%d h=%d" % (a["pgdn"] + (BR_BTN, BR_BTN)), "when=browse:On"))
     o(L("list", "x=%d y=%d w=%d h=%d" % (bx + 14, ly(BR_LIST_Y), bw - 28, BR_ROWS * (BR_TH + BR_GAP) - BR_GAP),
-        "cols=1 rows=%d th=%d gap=%d key=br" % (BR_ROWS, BR_TH, BR_GAP), "tsize=28 tfont=Roboto tcolor=ffffff talign=left",
+        "cols=1 rows=%d th=%d gap=%d key=br" % (BR_ROWS, BR_TH, BR_GAP), "tsize=34 tfont=Roboto tcolor=ffffff talign=left",
         "color=2e3436", "when=browse:On"))
     o(L("readout", "cx=%d cy=%d w=%d h=28" % (bx + bw // 2, ly(by + bh - 18), bw - 40), 'label=""', "key=status",
-        "tsize=22 tfont=Roboto tcolor=b2b2b2", "when=browse:On"))
+        "tsize=24 tfont=Roboto tcolor=b2b2b2", "when=browse:On"))
     # the piano strip: a key shows pressed while its note sounds (parameters key_0..key_127, set by the engine)
     for k, (img, (x0, y0, x1, y1)) in sorted(a["keys"].items()):
         o(L("art", 'file="%s"' % img, "x=%d y=%d w=%d h=%d" % (x0, ly(y0), x1 - x0, y1 - y0), "when=key_%d:On" % k))
@@ -547,10 +552,10 @@ def main():
     a["prev"] = tuple(icon_button("prev", 32, 36, lambda c, x, y, col: chevron(c, x, y, 18, "left", col)))
     a["next"] = tuple(icon_button("next", 32, 36, lambda c, x, y, col: chevron(c, x, y, 18, "right", col)))
     a["chev"] = tuple(icon_button("chevron", 32, 36, lambda c, x, y, col: chevron(c, x, y, 18, "down", col)))
-    a["home"] = tuple(icon_button("home", 36, 36, house))
-    a["up"] = tuple(icon_button("up", 36, 36, folder_up))
-    a["pgup"] = tuple(icon_button("pgup", 34, 34, lambda c, x, y, col: chevron(c, x, y, 16, "up", col)))
-    a["pgdn"] = tuple(icon_button("pgdn", 34, 34, lambda c, x, y, col: chevron(c, x, y, 16, "down", col)))
+    a["home"] = tuple(icon_button("home", BR_BTN, BR_BTN, lambda c, x, y, col: house(c, x, y, col, 1.3)))
+    a["up"] = tuple(icon_button("up", BR_BTN, BR_BTN, lambda c, x, y, col: folder_up(c, x, y, col, 1.3)))
+    a["pgup"] = tuple(icon_button("pgup", BR_BTN, BR_BTN, lambda c, x, y, col: chevron(c, x, y, 21, "up", col, 2.6)))
+    a["pgdn"] = tuple(icon_button("pgdn", BR_BTN, BR_BTN, lambda c, x, y, col: chevron(c, x, y, 21, "down", col, 2.6)))
     a["reset"] = tuple(icon_button("reset", 30, 28, cross, bg=DARK))
     a["check"] = tuple(checkbox())
     browser_tile()

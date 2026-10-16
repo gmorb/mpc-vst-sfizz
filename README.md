@@ -88,7 +88,10 @@ Left out, because they mean nothing on the MPC: the volume meters, Theme, Zoom, 
 **Q-Links**: Volume, Pan, the 8 CC knobs, Frequency, Stretch, Sample and Oscillator quality.
 
 The drop-down lists (Max, Preload size, Oversampling, Sample and Oscillator quality, Root key, the historical tuning
-presets) open large for the touchscreen: 46 px rows with 20 px text, in as few columns as fit beside their field.
+presets) open large for the touchscreen: 46 px rows with 20 px text, in as few columns as fit beside their field. The
+SFZ browser is sized for fingers too: six 43 px rows per page, with 44 px Home, Up and page buttons.
+
+![The SFZ browser](docs/browser.png)
 
 ![Side by side with sfizz's own editor](docs/compare.png)
 

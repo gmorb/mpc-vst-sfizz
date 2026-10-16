@@ -56,7 +56,7 @@ One page, the four tabs of sfizz's editor side by side: the header (file box wit
 Memory, Volume and Pan), **Information** (curves, masters, groups, regions, samples), **Controls** (the instrument's
 own CC knobs with its names, up to 8) and **Settings** (preload size, oversampling, sustain cancels release, sample and
 oscillator rendering quality, Scala file, root key, tuning frequency with historical presets, stretch tuning), over a
-piano that shows the keys being played. The drop-down lists open large, for the touchscreen.
+piano that shows the keys being played. The drop-down lists and the SFZ browser are sized for the touchscreen.
 **Q-Links**: Volume, Pan, the 8 CC knobs, Frequency, Stretch, Sample and Oscillator quality.
 
 ## Notes

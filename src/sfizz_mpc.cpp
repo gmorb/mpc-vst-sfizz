@@ -44,7 +44,7 @@ namespace {
 constexpr int SR = 44100;
 constexpr int BLOCK = 128;
 constexpr int CC_SLOTS = 8;      // the Controls panel's knobs
-constexpr int BR_ROWS = 8;       // browser rows on screen
+constexpr int BR_ROWS = 6;       // browser rows on screen (design.py BR_ROWS; br_7, br_8 stay in params.json, unused)
 constexpr int MAX_ENTRIES = 4000;
 constexpr int MAX_MIDI = 256;
 

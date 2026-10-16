@@ -140,6 +140,8 @@ The screenshot link is pinned to the tag: it must exist in that tag (`docs/scree
 - **List-row taps**: ignore value 0 (the echo of a row switching off), and drop taps made on a listing that has changed
   since. One touch still acted twice on the device with a 350 ms guard (1.0.3); 1.0.4 guards every browsing action for
   700 ms after the last one or a new listing (`nav_ok`). If it persists, log the setParameter calls on the device.
+- **SFZ browser size**: `design.py` `BR_ROWS`/`BR_TH`/`BR_BTN` and the engine's `BR_ROWS` must agree (6 rows since 1.0.4;
+  paging and `br_page` use the engine's). Params `br_7`/`br_8` are unused but stay (frozen order).
 - **Popup lists**: `skin_post.py` re-lays and re-draws every popup's option list larger than the kit does (46 px rows,
   20 px text; `POP_*` at its end), from `layout.conf`'s field positions and `params.json`'s option names. A new popup
   needs nothing extra; it exits non-zero if a list doesn't match. The kit's own `sh_po_*`/`sh_pop_*` pictures are removed.
@@ -163,7 +165,7 @@ The screenshot link is pinned to the tag: it must exist in that tag (`docs/scree
 
 - **Gen2 (aarch64)**: every Gen2 difference is behind `#if defined(__aarch64__)` (defaults `DEF_*` and
   `STREAM_BUDGET_MAX` in `src/sfizz_mpc.cpp`; `reserveLimit` and `kAheadSeconds` in `FilePool.cpp`), so the armv7 `.so`
-  stays byte-identical when only Gen2 changes; check its sha256 against the last release when that is the intent. Keep
+  stays byte-identical when only Gen2 changes (check its sha256 against the last build when that is the intent). Keep
   `DEF_VOICES == POLYPHONY[DEF_POLY_IDX]` (a literal on purpose: indexing the table there changed the armv7 layout).
   On aarch64 the output is within 3e-8 of upstream, not bit-identical (FMA contraction). Not yet run on a Gen2 device;
   there is no root route on Gen2 that the kit provides, so testers need their own.

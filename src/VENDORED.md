@@ -70,7 +70,7 @@ inaudible threshold there was nothing to gain; above one it would cut real tails
 The same tree builds for aarch64 (`build.sh so64`). In `FilePool.cpp`, behind `#if defined(__aarch64__)`: the address
 space reserved for whole decoded files has no 768 MB ceiling (a 64-bit process), and the streamer keeps 2 s ahead
 instead of 1.25 s. The engine (`src/sfizz_mpc.cpp`) sets the budget's ceiling to 1 GB and the new-instance defaults to
-Sinc 8 / High / 96 voices there. The armv7 build is unchanged by all of this (byte-identical `.so`). On aarch64 the
+Sinc 8 / High / 96 voices there. None of this changes the armv7 build. On aarch64 the
 output matches upstream to within 3e-8 (1e-7 at Sinc 8) rather than bit for bit: the compiler contracts multiply-adds
 differently in upstream's scalar loops than in the port's NEON ones. Per-voice instruction counts for both builds are
 in TESTING.md ("CPU per voice").

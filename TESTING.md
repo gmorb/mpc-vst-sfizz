@@ -87,9 +87,9 @@ Nothing here ran on a Gen2 device; QEMU 8.2 user mode (`qemu-aarch64`) on x86 th
    instrument switches, preload and voice changes while streaming, closed mid-stream, two rounds), with the default
    24 MB budget and with `STRESS_BUDGET_MB=1024`: `stress OK`, no traps. Its underrun counts are QEMU's speed (FLAC
    decoding emulated far slower than real time), not a property of the build.
-5. The armv7 `.so` built from the same tree is byte-identical to the one in the first 1.0.4 build (sha256
-   `d3b1445c…`): every Gen2 change is behind `#if defined(__aarch64__)`. (The zip itself changed later, with the larger
-   popup lists: skin only.)
+5. The armv7 `.so` built from the same tree was byte-identical to the one in the first 1.0.4 build (sha256
+   `d3b1445c…`): every Gen2 change is behind `#if defined(__aarch64__)`. It changed afterwards with the larger browser
+   (6 rows), below.
 6. Packaging: `release.py` once per `.so` → `sfizz-1.0.4-mpc-armv7.zip` and `sfizz-1.0.4-mpc-aarch64.zip` (manifest
    `arch: aarch64`, `os_compat: ["3.x"]`); `catalog_check.py --catalog` on each: `OK: sfizz 1.0.4 (0 warnings)`.
    The kit's own aarch64 host test (`test_port.sh vst.json aarch64`) needs Docker with an arm64 image; not run here.
@@ -100,10 +100,20 @@ Nothing here ran on a Gen2 device; QEMU 8.2 user mode (`qemu-aarch64`) on x86 th
    needed). Checked: every referenced picture exists, panel pictures match their bounds, the kit's old popup pictures are
    gone; `studio.py preview` (its all-lists-open view) and `tools/mock_screen.py` with each list open look right; host
    test PASSED. Not yet seen on a device.
-2. `tools/package.sh` → both installer zips (catalog checks OK, 0 warnings; the `.so` files unchanged), the standalone
+2. `tools/package.sh` → both installer zips (catalog checks OK, 0 warnings), the standalone
    `sfizz-for-MPC-OS-1.0.4.zip` and the manual. The standalone zip unpacked into a fake `/media/662522/Synths`: the
    README's sed line fills the Default preset's path, and `plugin-meta.xml` with `%payload-path%` replaced (the
    scanner's rule) names the ARM `.so` that exists there. `vstscanner.sh` itself (Force VST distribution) was not run.
+
+## Offline: the larger SFZ browser (done for 1.0.4, 2026-10-16)
+1. Six rows of 43 px (were eight of 32), text 34 (was 28), 44 px Home / Up / page buttons, a 40 px path line; the engine
+   pages by six (`BR_ROWS`). `br_7`/`br_8` stay in `params.json` (frozen order) and are unused.
+2. Engine API (x86): a 14-file folder reads `1-6 of 14`, page down `7-12 of 14`, again `9-14 of 14` (the last page
+   ends on the last file), page up `3-8 of 14`; `br_7`/`br_8` read empty and a tap on `br_7` does nothing; a tap on row 6
+   loads the file shown there.
+3. Host test PASSED (its known `note 60` warn); `tools/test_arm.sh` on both builds: load, play, defaults and close as
+   before; both `.so` still need glibc 2.27 at most. Screen mock of the open browser: `docs/browser.png`. No new touch
+   overlaps in the skin build.
 
 ## CPU per voice (2026-10-16, both builds, the same method)
 Instructions per voice per 128-frame block, Salamander Grand Piano V3 (WAV), 16 held voices, 1500 blocks minus a run

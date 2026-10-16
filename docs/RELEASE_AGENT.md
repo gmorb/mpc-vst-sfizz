@@ -22,9 +22,9 @@ These instructions publish **sfizz for MPC OS 1.0.4** on GitHub as `gmorb/mpc-vs
 | GitHub repo | `gmorb/mpc-vst-sfizz`, public, default branch `main` |
 | Tag / release title | `v1.0.4` / `sfizz for MPC OS 1.0.4` |
 | Plugin | name `sfizz`, vendor `sfztools`, uid `SfzM`, catalog id `sfizz`, licence `BSD-2-Clause` |
-| Gen1 asset | `sfizz-1.0.4-mpc-armv7.zip`, sha256 `418604f9ef5bd7e087f55377d50f0b3acb0013a5e23b356601aa87ba6375d463` |
-| Gen2 asset | `sfizz-1.0.4-mpc-aarch64.zip`, sha256 `0f4e89f543045e84df3935d797568b2cd88b13c3d521cb10fd1b22ae44039e0f` |
-| Standalone asset | `sfizz-for-MPC-OS-1.0.4.zip` (Gen1 plugin folder for `vstscanner.sh`), sha256 `d19dcf2befa454882e19d69e71cd87b2fbd342cb20acf224a96c9006a6d2fdd6` |
+| Gen1 asset | `sfizz-1.0.4-mpc-armv7.zip`, sha256 `c3a1e88c43d0b531bcb4ea2b1a965acce090fdf574e606c5a4bf4fed65847569` |
+| Gen2 asset | `sfizz-1.0.4-mpc-aarch64.zip`, sha256 `39231a313ed8af9703ed650e8a196ccda46a2bf578cfd33128f9d964caa888da` |
+| Standalone asset | `sfizz-for-MPC-OS-1.0.4.zip` (Gen1 plugin folder for `vstscanner.sh`), sha256 `6db86546d7c4b21f076de012fed8c3090482c928cdc487a79e82e3b9e6f71cf4` |
 | Other assets | `SHA256SUMS`, `sfizz-for-MPC-OS-1.0.4-manual.pdf` (its sha256 is in `SHA256SUMS`) |
 | Release notes | `packaging/release-notes-v1.0.4.md` (in the repo) |
 | Catalog entry | `packaging/catalog/sfizz.json` → `catalog/plugins/sfizz.json` in sd88me/mpc-vst-plugins |
@@ -113,8 +113,8 @@ gh release create v1.0.4 --repo gmorb/mpc-vst-sfizz --draft --verify-tag \
 gh release view v1.0.4 --repo gmorb/mpc-vst-sfizz --json tagName,name,isDraft,isPrerelease,url,assets \
   --jq '{tag:.tagName,name:.name,draft:.isDraft,pre:.isPrerelease,url:.url,assets:[.assets[]|{name,size}]}'
 ```
-Check: `draft: true`, `pre: false`, five assets with these sizes: armv7 zip 1445908 bytes, aarch64 zip 1523827 bytes,
-standalone zip 1454311 bytes, manual 667556 bytes, `SHA256SUMS` 379 bytes.
+Check: `draft: true`, `pre: false`, five assets with these sizes: armv7 zip 1447306 bytes, aarch64 zip 1525219 bytes,
+standalone zip 1455717 bytes, manual 664507 bytes, `SHA256SUMS` 379 bytes.
 
 ## 7. Check the uploaded files the way the catalog will
 Scratch folders (`dl`, `kit`, `reg`, `catout`) go beside the repo, never inside it.
@@ -132,8 +132,9 @@ README, `plugin-meta.xml` and `.so`).
 ## 8. STOP: report and wait
 Report: the state output (step 2), the repo URL, the draft release URL, the assets with sizes, the checksum and catalog
 check output, and the social-preview note. Then wait. The owner tests the draft's zips on their devices and says **go**
-(and whether the Gen2 zip was tested on a Gen2 device). This build changed the screen's drop-down lists since the last
-device test, so remind the owner to open a few of them (Sample quality, the tuning presets) on the device.
+(and whether the Gen2 zip was tested on a Gen2 device). This build changed the screen's drop-down lists and the SFZ browser
+(six larger rows) since the last device test, so remind the owner to open a few lists (Sample quality, the tuning
+presets) and to browse a folder with more than six files, paging down and up, on the device.
 
 If the owner says the Gen2 zip *was* tested on a Gen2 device before you publish, update the notes' last Gen2 sentence
 ("tested offline (emulated) only so far") to name the device, in `packaging/release-notes-v1.0.4.md` on `main` (commit,
