@@ -3,7 +3,8 @@
 sample values drawn where MPC draws its live labels (Roboto, the sizes and colours in TUI.json). For checking the design
 against sfizz's own editor before anything goes to a device; MPC itself draws the real thing.
 
-    tools/mock_screen.py "<plugin folder>" params.json out.png [key=value ...] [--show <param>=<option index> ...]
+    tools/mock_screen.py "<plugin folder>" params.json out.png [key=value ...] [+<param>=<option index> ...]
+    key=value is a live text; key_on=1 lights a list tile; key@=0..1 is a knob's position.
 """
 import json
 import os
@@ -79,6 +80,8 @@ def main():
                 b = Image.open(os.path.join(pdir, sd["data"]["offImage"])).convert("RGBA")
                 bid = sd["data"].get("buttonId", 0)
                 if sd["data"].get("numButtonsInGroup", 1) > 1 and key and str(values.get(key, "")) == str(bid):
+                    b = Image.open(os.path.join(pdir, sd["data"]["onImage"])).convert("RGBA")
+                elif key and values.get(key + "_on") == "1":   # a list tile the engine lights (key_on=1)
                     b = Image.open(os.path.join(pdir, sd["data"]["onImage"])).convert("RGBA")
                 im.alpha_composite(b, (int(x + sx), int(y + sy)))
             elif sd["type"] == "Label":

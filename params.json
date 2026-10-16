@@ -676,6 +676,224 @@
    "default": 0,
    "display": "string",
    "type": "readout"
+  },
+  {
+   "key": "kb_down",
+   "name": "Keyboard octave down",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "kb_up",
+   "name": "Keyboard octave up",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "momentary": true,
+   "type": "trigger"
+  },
+  {
+   "key": "kw_1",
+   "name": "Key C",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_2",
+   "name": "Key D",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_3",
+   "name": "Key E",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_4",
+   "name": "Key F",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_5",
+   "name": "Key G",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_6",
+   "name": "Key A",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_7",
+   "name": "Key B",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_8",
+   "name": "Key C+1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_9",
+   "name": "Key D+1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_10",
+   "name": "Key E+1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_11",
+   "name": "Key F+1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_12",
+   "name": "Key G+1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_13",
+   "name": "Key A+1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_14",
+   "name": "Key B+1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kw_15",
+   "name": "Key C+2",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kba_1",
+   "name": "Key C#",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kba_2",
+   "name": "Key D#",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kbb_1",
+   "name": "Key F#",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kbb_2",
+   "name": "Key G#",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kbb_3",
+   "name": "Key A#",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kbc_1",
+   "name": "Key C#+1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kbc_2",
+   "name": "Key D#+1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kbd_1",
+   "name": "Key F#+1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kbd_2",
+   "name": "Key G#+1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
+  },
+  {
+   "key": "kbd_3",
+   "name": "Key A#+1",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "display": "string"
   }
  ]
 }

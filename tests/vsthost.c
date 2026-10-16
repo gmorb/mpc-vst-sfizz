@@ -67,6 +67,13 @@ int main(int argc, char **argv) {
         }
         for (int q = 11; q <= 20; q++) printf("  param %d name=\"%s\" value=\"%s\"\n", q, pname(q), disp(q));
         midi(0x90, 60, 110); printf("note 60 rms %.4f\n", run(150)); midi(0x80, 60, 0); run(100);
+        {   /* the on-screen keyboard: tap its C4 (the 8th white key at the default octave), as a screen touch would */
+            int k = find("Key C+1");
+            printf("keyboard: \"%s\" key shows \"%s\"\n", pname(k), disp(k));
+            fx->setParameter(fx, k, 1.0f);
+            printf("tap rms %.4f", run(100));
+            printf(", after 1.4 s rms %.4f\n", (run(300), run(100)));
+        }
         char *c = 0; intptr_t n = fx->dispatcher(fx, 23, 0, 0, &c, 0);
         printf("chunk %ld bytes, first line: %.*s\n", (long)n, (int)strcspn(c, "\n"), c);
     }
