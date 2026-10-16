@@ -10,9 +10,10 @@ Requires a modded unit with root access, as every plugin from that project does.
 **Download** the `sfizz-<version>-mpc-armv7.zip` from [Releases](../../releases). **Manual:** [docs/MANUAL.pdf](docs/MANUAL.pdf).
 
 ## Install
-1. Unzip, copy the `sfizz-<version>` folder to the device: `scp -r sfizz-1.0.3 root@<device-ip>:/tmp/`
-2. Run the installer: `ssh root@<device-ip> sh /tmp/sfizz-1.0.3/install.sh` (it stops and restarts MPC: save first).
-3. Add **sfizz** to a track from the plugin browser. Tap ⌄ to open an SFZ from an SD card or USB drive.
+1. Unzip, copy the `sfizz-<version>` folder to the device: `scp -r sfizz-1.0.4 root@<device-ip>:/tmp/`
+2. Run the installer: `ssh root@<device-ip> sh /tmp/sfizz-1.0.4/install.sh` (it stops and restarts MPC: save first).
+3. Add **sfizz** to a track from the plugin browser, or from Sounds › INSTRUMENTS (its sfizz tile, then Default). Tap ⌄
+   to open an SFZ from an SD card or USB drive.
 
 Requirements: MPC OS 3.x, a Gen1 (32-bit) device, root SSH. The zip's `INSTALL.md` also has the manual steps.
 `uninstall.sh` removes it and keeps the SFZ files you put in its library folder.
@@ -55,8 +56,9 @@ about 3.5× cheaper per voice on ARM than upstream at Sinc 8 (NEON paths, stages
 skipped), with the same sound. Details and measurements in `src/VENDORED.md`.
 
 ## Sound quality
-Sample quality defaults to **Sinc 8**. Measured offline it removes about 24 dB of interpolation distortion over sfizz's
-own default (Polynomial) on samples pitched down, for a little more CPU per voice. Polynomial is the cheapest; Sinc 24 and up are cleaner still. Samples are kept in 32-bit float, so 24-bit libraries keep their depth.
+Sample and Oscillator quality default to **Linear**, the lightest on the CPU. Polynomial (sfizz's desktop default) and
+Sinc 8 are cleaner on samples pitched far from their root (Sinc 8 removes about 24 dB of interpolation distortion over
+Polynomial on samples pitched down, measured offline) for more CPU per voice; Sinc 24 and up are cleaner still. Samples are kept in 32-bit float, so 24-bit libraries keep their depth.
 
 ## Build
 ```

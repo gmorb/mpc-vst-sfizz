@@ -50,7 +50,7 @@ figcaption { font-size: 8.8pt; color: #5b6164; margin-top: 3pt; }
     <div class="band">
       <img src="../../art/logo_text_shaded@2x.png" alt="sfizz">
       <h1>sfizz for MPC OS</h1>
-      <div class="sub">User manual · version 1.0.3</div>
+      <div class="sub">User manual · version 1.0.4</div>
     </div>
     <figure style="margin-top:14pt"><img src="../screen.png" alt="The sfizz screen on the MPC"></figure>
     <p>The sfizz 1.2.3 SFZ sampler as a native instrument plugin for Gen1 MPC OS hardware, on a one-page screen
@@ -94,9 +94,9 @@ figcaption { font-size: 8.8pt; color: #5b6164; margin-top: 3pt; }
 <h2 style="margin-top:16pt">2. Installing and uninstalling</h2>
 <h3>Scripted install (recommended)</h3>
 <ol>
-  <li>Download <code>sfizz-1.0.3-mpc-armv7.zip</code> from the project's GitHub Releases page and unzip it on your computer.</li>
-  <li>Copy the whole folder to the device:<pre>scp -r sfizz-1.0.3 root@&lt;device-ip&gt;:/tmp/</pre></li>
-  <li>Run the installer:<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.3/install.sh</pre></li>
+  <li>Download <code>sfizz-1.0.4-mpc-armv7.zip</code> from the project's GitHub Releases page and unzip it on your computer.</li>
+  <li>Copy the whole folder to the device:<pre>scp -r sfizz-1.0.4 root@&lt;device-ip&gt;:/tmp/</pre></li>
+  <li>Run the installer:<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.4/install.sh</pre></li>
 </ol>
 <p>The installer checks the device, asks for confirmation, <b>stops MPC</b> (save your project first), copies the plugin
 folder to <code>/sdcard/Synths/sfztools - VST - sfizz/</code>, backs up <code>MPC.settings</code>, adds sfizz to MPC's
@@ -106,7 +106,7 @@ Synths folder (for example on a card). Running it again upgrades in place.</p>
 <p>The zip's <code>INSTALL.md</code> lists the manual steps: copy the plugin folder, stop MPC, back up and edit
 <code>MPC.settings</code>, start MPC.</p>
 <h3>Uninstall</h3>
-<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.3/uninstall.sh</pre>
+<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.4/uninstall.sh</pre>
 <p>This removes the plugin folder and its plugin-list entry, and restarts MPC. SFZ files you put in the plugin's
 <code>sfizz/Instruments</code> folder are kept. Projects that used sfizz load without it.</p>
 
@@ -114,7 +114,8 @@ Synths folder (for example on a card). Running it again upgrades in place.</p>
 <ol>
   <li>Copy an SFZ instrument folder to an SD card or USB drive (keep the <code>.sfz</code> file next to its samples
   folder) and insert it. A good free one: <i>Salamander Grand Piano V3</i> (github.com/sfzinstruments/SalamanderGrandPiano).</li>
-  <li>On a track, add <b>sfizz</b> from the plugin browser (Instrument plugins). A new sfizz plays a simple sine.</li>
+  <li>On a track, add <b>sfizz</b> from the plugin browser (Instrument plugins), or from Sounds › INSTRUMENTS, where it
+  has its own sfizz tile: tap it, then <b>Default</b>. A new sfizz plays a simple sine.</li>
   <li>Tap the <b>⌄</b> button at the top right of the file box. The browser opens.</li>
   <li>Tap your card, then folders, then the <code>.sfz</code> file. The name, counts and memory update when it has loaded.</li>
   <li>Play. Turn the Q-Links: they control Volume, Pan and the instrument's own controls.</li>
@@ -216,7 +217,7 @@ Volume and Pan knobs. A controller that doesn't fit still works from MIDI.</p>
   up heavily pitched sounds, but multiplies memory and load time. Changing it reloads the samples.</td></tr>
   <tr><td class="k">Sustain cancels release</td><td><b>Off</b>, On</td><td>sfizz's option of the same name: decides whether
   holding the sustain pedal cancels release samples, as some other SFZ players do.</td></tr>
-  <tr><td class="k">Sample (quality)</td><td>Nearest, Linear, Polynomial, <b>Sinc 8</b>, Sinc 12, 16, 24, 36, 48, 60, 72</td><td>How
+  <tr><td class="k">Sample (quality)</td><td>Nearest, <b>Linear</b>, Polynomial, Sinc 8, Sinc 12, 16, 24, 36, 48, 60, 72</td><td>How
   samples are resampled when played at another pitch or sample rate. Higher is cleaner and costs more CPU (section 10).</td></tr>
   <tr><td class="k">Oscillator (quality)</td><td>Nearest, <b>Linear</b>, High, Dual-High</td><td>The same for sfizz's built-in
   waveforms (<code>*sine</code>, <code>*saw</code> and wavetables).</td></tr>
@@ -269,10 +270,13 @@ a little ahead of what is playing, at normal priority, within a memory budget (a
 plugin starts, between 48 and 384 MB). Files no note uses are released after a few seconds. If the budget runs out
 (very many long notes at once), the notes that have played longest fade out quickly, as when sfizz runs out of voices,
 so new notes always sound. The sound is otherwise exactly the same.</p>
-<p>Why Sinc 8 is the default: in offline measurements it removed about 24 dB of interpolation distortion compared with
-sfizz's desktop default (Polynomial) on bright samples pitched down, for a small extra cost. sfizz keeps samples in 32-bit
-float, so 24-bit libraries keep their full depth.</p>
-<div class="note">If you hear crackles: lower Sample quality to Polynomial, lower Max voices, or check that other plugins
+<p>Sample and Oscillator quality start at <b>Linear</b>, the lightest setting that still interpolates, so a new sfizz
+leaves the most CPU for everything else. When there's room, raise Sample quality: Polynomial (sfizz's desktop default)
+or Sinc 8 are cleaner on samples played far from their original pitch (in offline measurements Sinc 8 removed about 24 dB
+of interpolation distortion over Polynomial on bright samples pitched down). Samples played near their own pitch, as in
+most multisampled pianos, sound nearly the same at any setting. sfizz keeps samples in 32-bit float, so 24-bit
+libraries keep their full depth. A project keeps the quality it was saved with.</p>
+<div class="note">If you hear crackles: keep Sample quality at Linear, lower Max voices, or check that other plugins
 on the project aren't already using most of the CPU. If note starts drop out on a slow card, raise Preload size.</div>
 
 </div>

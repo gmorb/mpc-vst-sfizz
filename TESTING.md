@@ -62,6 +62,15 @@ All of the 1.0.0 list again (host test PASSED; `tools/test_arm.sh` with Salamand
 4. Skin: 128 pressed-key pictures (only that key's pixels, cut from the strip drawn pressed), each shown by its
    parameter; no new touch overlaps. Screen mock with C4, E4, G4 down: `docs/screen.png`.
 
+## Offline (done for 1.0.4, 2026-10-16)
+1. Browser guard, through the engine API (x86, ASan/UBSan): a row tap repeated 450 ms later is ignored; Up pressed twice
+   within 300 ms goes up one level; a tap 0.8 s later is taken. Not reproduced on a device: the device's double action
+   is assumed to be a second event from the same touch (see `nav_ok` in `src/sfizz_mpc.cpp`).
+2. A new instance reports Sample and Oscillator quality Linear. Host test PASSED (its known `note 60` warn); `tools/test_arm.sh`
+   with Salamander as before (its chunk sets Sinc 8 explicitly).
+3. Tile: `build.sh` writes `Plugin Skins/browser_images/soundsmode.png` (270x110, `art/tile.png`) and
+   `Presets/0000-Default.xpl` (the kit's `xpl.py`, an empty chunk: the engine's defaults); both are in the release zip.
+
 ### The offline harnesses (`tests/offline/`)
 Built against `build/libsfizz_x86_all.a` (from `tools/build_x86_test_libs.sh`) on x86, or against the armhf archives in
 `build/sfizz-armhf` (from `build.sh so`) with `-DAB_MAIN -shared` for ARM, run through `abhost.c` under qemu-arm with

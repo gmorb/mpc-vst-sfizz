@@ -184,6 +184,24 @@ def pressed_keys():
     return out
 
 
+def browser_tile():
+    """The 270x110 tile MPC's Sounds > INSTRUMENTS page shows for the plugin: sfizz's logo on its dark title colour,
+    with the flask emblem from its editor background."""
+    c = Canvas(270, 110, DARK + (255,))
+    emblem = Image.open(os.path.join(ART, "background@2x.png")).convert("RGBA")
+    flask = emblem.crop((755, 0, 1012, emblem.height))
+    flask = flask.crop(flask.getbbox())
+    r, g, b, a = flask.split()
+    flask = Image.merge("RGBA", (r, g, b, a.point(lambda v: min(255, v * 3))))   # stronger than the faint backdrop
+    fh = 88
+    fw = round(flask.width * fh / flask.height)
+    c.im.alpha_composite(flask.resize((fw * SS, fh * SS), Image.LANCZOS), (int((262 - fw) * SS), int((110 - fh) / 2 * SS)))
+    logo = Image.open(os.path.join(ART, "logo_text_shaded@2x.png")).convert("RGBA")
+    lw, lh = 166, 82
+    c.im.alpha_composite(logo.resize((lw * SS, lh * SS), Image.LANCZOS), (int(14 * SS), int((110 - lh) / 2 * SS)))
+    return c.save("tile.png")
+
+
 def header(c):
     x, y, w, h = LOGO
     c.rrect(x, y, w, h, 8, DARK)
@@ -535,6 +553,7 @@ def main():
     a["pgdn"] = tuple(icon_button("pgdn", 34, 34, lambda c, x, y, col: chevron(c, x, y, 16, "down", col)))
     a["reset"] = tuple(icon_button("reset", 30, 28, cross, bg=DARK))
     a["check"] = tuple(checkbox())
+    browser_tile()
     a["keys"] = pressed_keys()
     a["scala"] = tuple(pill_button("scala", settings_pills()[4][2], 28, DARK))
     write_layout(a)

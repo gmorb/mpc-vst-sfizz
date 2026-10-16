@@ -2,11 +2,12 @@
   "name": "sfizz",
   "vendor": "sfztools",
   "uid": "SfzM",
-  "version": 1003,
+  "version": 1004,
   "so": "sfizz_mpc.so",
   "params": "params.json",
   "layout": "layout.conf",
   "art": "html",
+  "tile": "art/tile.png",
   "cc": false,
   "nrpn": false,
   "defines": {

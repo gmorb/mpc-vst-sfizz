@@ -1,3 +1,13 @@
+# sfizz for MPC OS 1.0.4
+
+## Changes since 1.0.3
+- **Browser**: a tap still acted twice on the device. Every browsing action (a row, Up, Home, the page arrows, ‹ › in the
+  file box) is now taken only if none was taken, and no new folder listing appeared, in the last 0.7 s.
+- **Lighter defaults**: a new sfizz starts with Sample and Oscillator quality at Linear. Raise Sample quality when there
+  is CPU to spare. Projects keep the quality they were saved with.
+- **Instruments tile**: sfizz shows as an artwork tile in Sounds › INSTRUMENTS (tap it, then Default) instead of a plain
+  folder.
+
 # sfizz for MPC OS 1.0.3
 
 The piano strip at the bottom of the screen now shows the keys being played, and the SFZ browser no longer acts twice on
@@ -51,14 +61,14 @@ The [sfizz](https://github.com/sfztools/sfizz) 1.2.3 SFZ sampler as a native ins
   name if it moved.
 - No CPU spike per key hit: samples stream a little ahead of each note at normal priority, within a memory budget
   (upstream reads the whole file at once on a real-time thread, with no limit); identical sound.
-- Sample quality defaults to Sinc 8 (cleaner than sfizz's Polynomial default, for a little more CPU per voice).
+- Sample and Oscillator quality default to Linear, the lightest on the CPU; Sinc 8 and up are there when there's room.
 
 ## Requirements
 - Gen1 MPC OS device (armv7: Force, MPC Live / Live II, One, X, Key 61), **MPC OS 3.x**.
 - Root shell access (a modded unit): the installer edits `MPC.settings`.
 
 ## Install
-Copy the unzipped `sfizz-1.0.3` folder to the device and run `sh install.sh` as root (it stops and restarts MPC: save your
+Copy the unzipped `sfizz-1.0.4` folder to the device and run `sh install.sh` as root (it stops and restarts MPC: save your
 project first). Full steps, including a manual install, are in the zip's `INSTALL.md` and in `docs/MANUAL.pdf`.
 
 ## Tested

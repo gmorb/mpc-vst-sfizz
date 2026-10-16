@@ -79,7 +79,7 @@
     "Sinc 60",
     "Sinc 72"
    ],
-   "default": 3
+   "default": 1
   },
   {
    "key": "osc_quality",

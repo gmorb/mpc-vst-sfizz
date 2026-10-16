@@ -60,40 +60,40 @@ The host test's `note 60` line may say `warn` (it plays during a voice-count cha
 failure. Look at every preview image, and at a `tools/mock_screen.py` render, after any skin change.
 
 ## Release
-1. Bump `version` in `vst.json` (e.g. 1004 for 1.0.4) and the version below. Update `RELEASE_NOTES.md`.
+1. Bump `version` in `vst.json` (e.g. 1005 for 1.0.5) and the version below. Update `RELEASE_NOTES.md`.
 2. Build and test as above.
 3. Package with the catalog fields (no other way of making the zip):
    ```
    python3 "$MPC_VST/tools/release.py" --so build/sfizz_mpc.so --skin "build/skin/sfztools - VST - sfizz" \
-     --entry build/pluginlist-entry.xml --version 1.0.3 --extra data:sfizz --user-data sfizz/Instruments \
+     --entry build/pluginlist-entry.xml --version 1.0.4 --extra data:sfizz --user-data sfizz/Instruments \
      --repo gmorb/mpc-vst-sfizz --license BSD-2-Clause --id sfizz [--bench build/bench.txt] \
      --about "The sfizz 1.2.3 SFZ sampler (disk streaming, key switches, CC controls, Scala tuning) with a one-page screen modelled on sfizz's own editor." -o dist
-   python3 "$MPC_VST/tools/catalog_check.py" dist/sfizz-1.0.3-mpc-armv7.zip --catalog --expect-id sfizz --expect-repo gmorb/mpc-vst-sfizz
+   python3 "$MPC_VST/tools/catalog_check.py" dist/sfizz-1.0.4-mpc-armv7.zip --catalog --expect-id sfizz --expect-repo gmorb/mpc-vst-sfizz
    ```
-   The check must end `OK: sfizz 1.0.3`.
+   The check must end `OK: sfizz 1.0.4`.
 4. Device smoke test with that exact zip (TESTING.md, "On the device"). Ask before installing on someone's device: it
    restarts MPC. CPU: `"$MPC_VST/tools/bench.sh" build/sfizz_mpc.so <ip> -j | tee build/bench.txt` with a sampled
    instrument; re-package with `--bench` if you ran it.
 5. Tag and publish with `gh` (every claim backed by the command's output):
    ```
-   git tag v1.0.3 && git push origin main v1.0.3
-   gh release create v1.0.3 --repo gmorb/mpc-vst-sfizz --draft --title "sfizz for MPC OS 1.0.3" \
-     --notes-file RELEASE_NOTES.md dist/sfizz-1.0.3-mpc-armv7.zip
-   gh release view v1.0.3 --repo gmorb/mpc-vst-sfizz --json isDraft,assets,url     # check
-   gh release edit v1.0.3 --repo gmorb/mpc-vst-sfizz --draft=false --latest        # only after the device test
+   git tag v1.0.4 && git push origin main v1.0.4
+   gh release create v1.0.4 --repo gmorb/mpc-vst-sfizz --draft --title "sfizz for MPC OS 1.0.4" \
+     --notes-file RELEASE_NOTES.md dist/sfizz-1.0.4-mpc-armv7.zip
+   gh release view v1.0.4 --repo gmorb/mpc-vst-sfizz --json isDraft,assets,url     # check
+   gh release edit v1.0.4 --repo gmorb/mpc-vst-sfizz --draft=false --latest        # only after the device test
    ```
 6. After a device test, add it to `tested.json` (root, default branch), truthfully:
-   `[{"version": "1.0.3", "device": "MPC Live II", "firmware": "3.x.y", "date": "YYYY-MM-DD"}]`.
+   `[{"version": "1.0.4", "device": "MPC Live II", "firmware": "3.x.y", "date": "YYYY-MM-DD"}]`.
 
 ## List it in the catalog (first release only)
 ```
 gh repo fork sd88me/mpc-vst-plugins --clone --remote && cd mpc-vst-plugins && git checkout -b add-sfizz
 cp ../mpc-vst-sfizz/packaging/catalog/sfizz.json catalog/plugins/sfizz.json
 python3 tools/catalog_build.py --check-registry                                  # entry valid
-curl -sI https://raw.githubusercontent.com/gmorb/mpc-vst-sfizz/v1.0.3/docs/screen.png | head -1    # 200
+curl -sI https://raw.githubusercontent.com/gmorb/mpc-vst-sfizz/v1.0.4/docs/screen.png | head -1    # 200
 git add catalog/plugins/sfizz.json && git commit -m "Add sfizz" && git push -u origin add-sfizz
 gh pr create --repo sd88me/mpc-vst-plugins --head gmorb:add-sfizz --title "Add sfizz" \
-  --body "sfizz 1.0.3: the sfizz 1.2.3 SFZ engine for Gen1 MPC / Force. Release: <the real release URL>"
+  --body "sfizz 1.0.4: the sfizz 1.2.3 SFZ engine for Gen1 MPC / Force. Release: <the real release URL>"
 gh pr view --repo sd88me/mpc-vst-plugins --json url,state,number                # check
 ```
 No versions or checksums in the entry: the catalog reads them from the release. Later releases need no PR.
@@ -119,7 +119,10 @@ The screenshot link is pinned to the tag: it must exist in that tag (`docs/scree
   string tiles: polling 128 `<key>_on` every 10 ms would cost real audio-thread time. Screen touches report no
   release, which is why a playable keyboard (tried in a 1.0.3 draft) was dropped.
 - **List-row taps**: ignore value 0 (the echo of a row switching off), and drop taps made on a listing that has changed
-  since or right after a new one appeared; otherwise one finger acts twice (1.0.3 fix).
+  since. One touch still acted twice on the device with a 350 ms guard (1.0.3); 1.0.4 guards every browsing action for
+  700 ms after the last one or a new listing (`nav_ok`). If it persists, log the setParameter calls on the device.
+- **Instruments tile**: `vst.json` `"tile": "art/tile.png"` (drawn by `design.py`), as the kit documents; the tile only
+  opens the plugin through the Default preset the kit writes beside it.
 - **Parameter 0**: MPC toggles parameter 0 on insert and on every STOP; the kit's wrapper defers host sets of it, which
   breaks stepping tests for an option or whole-number parameter there. Keep a continuous knob (`stretch`) at index 0.
 - **0-127 knobs** (Volume, Pan, CC slots) are continuous knobs with `dynamic_display`, not `"display": "int"`: with int
