@@ -18,7 +18,7 @@ Requirements: MPC OS 3.x, a Gen1 (32-bit) device, root SSH. The zip's `INSTALL.m
 `uninstall.sh` removes it and keeps the SFZ files you put in its library folder.
 
 ## What's on the page
-sfizz's editor has four tabs; on the MPC they sit side by side on one page, under the same header, over a playable keyboard:
+sfizz's editor has four tabs; on the MPC they sit side by side on one page, under the same header and over the same piano:
 
 | sfizz | Here |
 |---|---|
@@ -29,7 +29,7 @@ sfizz's editor has four tabs; on the MPC they sit side by side on one page, unde
 | Information tab | Left panel: Curves, Masters, Groups, Regions, Samples |
 | Controls tab | Middle panel: the instrument's CC knobs (its `label_cc` names, CC badges), up to 8 |
 | Settings tab | Right panel: Engine options, Rendering quality, Tuning (Scala file, root key, frequency with the historical presets, stretch) |
-| Piano | Two octaves and a C, playable: keys light while sounding (MIDI or a tap), a tap plays the note (0.6 s), ‹ › shift octaves |
+| Piano | Same strip; keys show pressed while their notes are held, as in sfizz (a display: not playable by touch) |
 
 Left out, because they mean nothing on the MPC: the volume meters, Theme, Zoom, the "when freewheeling" quality rows
 (MPC never freewheels), and the file menu's Edit / Create / Open folder entries.

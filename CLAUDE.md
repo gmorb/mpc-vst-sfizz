@@ -114,9 +114,10 @@ The screenshot link is pinned to the tag: it must exist in that tag (`docs/scree
 - **Identity tests must take the path you changed**: `det.sfz` modulates pan, so it never reached the constant-pan paths;
   `tests/offline/det_fused.sfz` does. Disk-heavy work running beside the real-time hammer test (a compile) caused note
   cuts that were not the engine's; rerun on a quiet machine before believing a regression.
-- **Screen touches have no release**: a button or list tile reports Mouse Down (Toggle Switch) only, so a key tap plays a
-  fixed 0.6 s note. Tiles light from the engine's `<key>_on` (the wrapper polls it every 10 ms). Touch boxes must not
-  overlap: white keys take touches only below the black keys. Keyboard params are appended after the 1.0.2 ones.
+- **Pressed keys on the piano**: parameters `key_0`..`key_127` (Off/On, appended after 1.0.2's), set by the engine from MIDI
+  note on/off and reported through `mpc_engine_changed`; each shows a picture over the strip (`when=key_N:On`). Not
+  string tiles: polling 128 `<key>_on` every 10 ms would cost real audio-thread time. Screen touches report no
+  release, which is why a playable keyboard (tried in a 1.0.3 draft) was dropped.
 - **List-row taps**: ignore value 0 (the echo of a row switching off), and drop taps made on a listing that has changed
   since or right after a new one appeared; otherwise one finger acts twice (1.0.3 fix).
 - **Parameter 0**: MPC toggles parameter 0 on insert and on every STOP; the kit's wrapper defers host sets of it, which

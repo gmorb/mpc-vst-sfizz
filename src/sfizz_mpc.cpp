@@ -136,21 +136,10 @@ long long now_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-// The on-screen keyboard: two octaves and a C. Its keys are list tiles: white keys "kw_1".."kw_15", black keys in
-// four groups (the gaps between them): "kba_1..2" (C# D#), "kbb_1..3" (F# G# A#), "kbc_1..2", "kbd_1..3".
-constexpr int KB_KEYS = 25;
-constexpr int TAP_MS = 600;   // a tap plays its note this long (MPC reports the touch, not the finger lifting)
-int kb_offset(const char *key) {   // semitones above the keyboard's first C, or -1
-    static const int white[15] = {0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24};
-    if (std::strncmp(key, "kw_", 3) == 0 || (key[0] == 'k' && key[1] == 'b' && key[2] >= 'a' && key[2] <= 'd' && key[3] == '_')) {
-        const char *d = key + (key[1] == 'w' ? 3 : 4);
-        if (!std::isdigit(static_cast<unsigned char>(*d))) return -1;
-        int n = std::atoi(d) - 1;
-        if (key[1] == 'w') return n >= 0 && n < 15 ? white[n] : -1;
-        static const int black[4][3] = {{1, 3, -1}, {6, 8, 10}, {13, 15, -1}, {18, 20, 22}};
-        return n >= 0 && n < 3 ? black[key[2] - 'a'][n] : -1;
-    }
-    return -1;
+int key_param(const char *key) {   // "key_60" -> 60, else -1
+    if (std::strncmp(key, "key_", 4) || !std::isdigit(static_cast<unsigned char>(key[4]))) return -1;
+    int n = std::atoi(key + 4);
+    return n >= 0 && n < 128 ? n : -1;
 }
 
 std::string note_name(int key) {
@@ -233,12 +222,10 @@ struct Inst {
     std::atomic<unsigned> br_gen{0};
     std::atomic<long long> br_last_ms{0};
 
-    // the on-screen keyboard: KB_KEYS keys from kb_base (a C); taps play a note for TAP_MS; keys light while sounding
-    std::atomic<int> kb_base{48};
-    std::atomic<uint8_t> held[128] = {};     // note on from MIDI (audio thread writes, everyone reads)
-    std::atomic<uint8_t> tap_lit[128] = {};  // a tap's note is sounding
-    std::atomic<uint32_t> tap_req[4] = {};   // taps waiting for the audio thread (bit per note)
-    int tap_left[128] = {};                  // frames left of a tap's note (audio thread only)
+    // the piano strip: a key shows pressed while its MIDI note is on (as sfizz's editor shows it). The audio thread
+    // sets held[] and marks the key in key_changed; mpc_engine_changed() reports it as parameter "key_<n>".
+    std::atomic<uint8_t> held[128] = {};
+    std::atomic<uint32_t> key_changed[4] = {};
     std::atomic<int> settings_pending{0};
     int applied_voices = 64, applied_factor = 1;   // what sfizz has (create() sets these)
     uint32_t applied_preload = 8192;
@@ -609,16 +596,24 @@ void cc_followed(Inst *o, int cc, int value) {
         if (o->slot_cc[i] == cc) { o->cc_val[i] = value; o->changed |= CH_CC0 << i; }
 }
 
+void set_held(Inst *o, int note, bool on) {   // audio thread
+    note &= 127;
+    if (o->held[note] != on) {
+        o->held[note] = on;
+        o->key_changed[note >> 5] |= 1u << (note & 31);
+    }
+}
+
 void play_midi(Inst *o) {
     for (int k = 0; k < o->midi_n; k++) {
         const uint8_t *m = o->midi_q[k].b;
         int st = m[0] & 0xF0, len = o->midi_q[k].len;
-        if (st == 0x90 && len == 3 && m[2] > 0) { o->synth.noteOn(0, m[1], m[2]); o->held[m[1] & 127] = 1; }
-        else if ((st == 0x80 || st == 0x90) && len == 3) { o->synth.noteOff(0, m[1], m[2]); o->held[m[1] & 127] = 0; }
+        if (st == 0x90 && len == 3 && m[2] > 0) { o->synth.noteOn(0, m[1], m[2]); set_held(o, m[1], true); }
+        else if ((st == 0x80 || st == 0x90) && len == 3) { o->synth.noteOff(0, m[1], m[2]); set_held(o, m[1], false); }
         else if (st == 0xB0 && len == 3) {
             if (m[1] == 120 || m[1] == 123) {   // all sound / notes off
                 o->synth.allSoundOff();
-                for (auto &h : o->held) h = 0;
+                for (int n = 0; n < 128; n++) set_held(o, n, false);
                 continue;
             }
             o->synth.hdcc(0, m[1], float(m[2]) / 127.0f);
@@ -628,28 +623,6 @@ void play_midi(Inst *o) {
         else if (st == 0xA0 && len == 3) o->synth.polyAftertouch(0, m[1], m[2]);
     }
     o->midi_n = 0;
-}
-
-// audio thread, synth held: the keyboard's taps start (or restart) their notes; notes whose time is up end
-void play_taps(Inst *o, int frames) {
-    for (int w = 0; w < 4; w++) {
-        uint32_t bits = o->tap_req[w].exchange(0);
-        while (bits) {
-            int b = __builtin_ctz(bits);
-            bits &= bits - 1;
-            int note = w * 32 + b;
-            if (o->tap_left[note] > 0) o->synth.noteOff(0, note, 0);
-            o->synth.noteOn(0, note, 100);
-            o->tap_left[note] = TAP_MS * SR / 1000;
-            o->tap_lit[note] = 1;
-        }
-    }
-    for (int note = 0; note < 128; note++)
-        if (o->tap_left[note] > 0 && (o->tap_left[note] -= frames) <= 0) {
-            o->tap_left[note] = 0;
-            o->synth.noteOff(0, note, 0);
-            o->tap_lit[note] = 0;
-        }
 }
 
 void apply_dirty(Inst *o) {
@@ -696,7 +669,6 @@ void render(void *inst, int16_t *out, int frames) {
     o->locked_blocks = 0;
     apply_dirty(o);
     play_midi(o);
-    play_taps(o, frames);
     o->synth.renderBlock(bufs, size_t(frames), 1);
     if (++o->block_count % 32 == 0) {   // ~93 ms: the keyswitch, voices and memory readouts
         send(o, "/sw/last/current");
@@ -773,20 +745,6 @@ void set_param(void *inst, const char *key, const char *val) {
         push_job(o, [o, r, gen] { if (o->br_gen.load() == gen) browse_tap(o, r); });
         return;
     }
-    if (int k = kb_offset(key); k >= 0) {
-        int note = o->kb_base + k;
-        if (note < 0 || note > 127) return;
-        // value 1 is a tap; value 0 is a tap on a key that was lit (the toggle went off), else an echo
-        if (!trig(val) && !o->held[note] && !o->tap_lit[note]) return;
-        o->tap_req[note >> 5] |= 1u << (note & 31);
-        return;
-    }
-    if (!std::strcmp(key, "kb_down") || !std::strcmp(key, "kb_up")) {
-        if (!trig(val)) return;
-        o->kb_base = clampi(o->kb_base + (key[3] == 'd' ? -12 : 12), 0, 96);
-        o->display_rev++;
-        return;
-    }
     if (!trig(val)) return;   // the rest are triggers
     if (!std::strcmp(key, "file_prev")) push_job(o, [o] { step_file(o, -1); });
     else if (!std::strcmp(key, "file_next")) push_job(o, [o] { step_file(o, +1); });
@@ -817,8 +775,7 @@ std::string state_text(Inst *o) {
                   o->volume.load(), o->pan.load(), o->polyphony_idx.load(), o->oversampling_idx.load(), o->preload_idx.load(),
                   o->sustain_cancels.load(), o->sample_quality.load(), o->osc_quality.load(), o->root_note.load(),
                   o->root_oct.load(), double(o->tuning_freq.load()), o->tuning_preset.load(), double(o->stretch.load()));
-    std::string s = "sfizz-mpc 1\nfile=" + o->file_path + "\nscala=" + o->scala_path + "\n" + b
-                    + "kb_base=" + std::to_string(o->kb_base.load()) + "\n";
+    std::string s = "sfizz-mpc 1\nfile=" + o->file_path + "\nscala=" + o->scala_path + "\n" + b;
     for (int i = 0; i < CC_SLOTS; i++)
         if (o->slot_cc[i] >= 0) s += "cc" + std::to_string(o->slot_cc[i]) + "=" + std::to_string(o->cc_val[i].load()) + "\n";
     return s;
@@ -849,7 +806,6 @@ void restore_state(Inst *o, const char *text) {
     o->tuning_freq = float(std::max(300.0, std::min(500.0, num("tuning_freq", 440))));
     o->tuning_preset = clampi(int(num("tuning_preset", 7)), 0, N_TUNING - 1);
     o->stretch = float(std::max(0.0, std::min(1.0, num("stretch", 0))));
-    o->kb_base = clampi(int(num("kb_base", 48)), 0, 96) / 12 * 12;
     int vol = clampi(int(num("volume", 100)), 0, 127), pan = clampi(int(num("pan", 64)), 0, 127);
     std::map<int, int> ccs;
     for (auto &p : kv)
@@ -916,13 +872,7 @@ int get_param(void *inst, const char *key, char *buf, int len) {
         return put(buf, len, sw < 0 ? std::string("") : note_name(sw));
     }
     if (!std::strcmp(key, "memory")) return put(buf, len, memory_text(o->mem_bytes));
-    if (int k = kb_offset(key); k >= 0) {
-        int note = o->kb_base + k;
-        bool ok = note >= 0 && note <= 127;
-        if (std::strstr(key, "_on")) return puti(buf, len, ok && (o->held[note] || o->tap_lit[note]) ? 1 : 0);
-        if (ok && note % 12 == 0) return std::snprintf(buf, size_t(len), "C%d", note / 12 - 1);   // the C keys' octave
-        return put(buf, len, " ");
-    }
+    if (int n = key_param(key); n >= 0) return puti(buf, len, o->held[n] ? 1 : 0);
     std::lock_guard<std::mutex> l(o->ui_m);
     if (int r = br_row_of(key); r >= 0) {
         int i = o->br_top + r;
@@ -984,6 +934,14 @@ extern "C" const mpc_engine_t *mpc_engine(void) {
 
 extern "C" int mpc_engine_changed(void *inst, char *key, int len) {
     Inst *o = static_cast<Inst *>(inst);
+    for (int w = 0; w < 4; w++) {   // piano keys pressed or released
+        uint32_t bits = o->key_changed[w].load();
+        if (bits) {
+            int b = __builtin_ctz(bits);
+            o->key_changed[w] &= ~(1u << b);
+            return std::snprintf(key, size_t(len), "key_%d", w * 32 + b);
+        }
+    }
     uint32_t c = o->changed.load();
     if (!c) return 0;
     for (int b = 0; b < 32; b++) {

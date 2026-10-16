@@ -53,15 +53,14 @@ All of the 1.0.0 list again (host test PASSED; `tools/test_arm.sh` with Salamand
 5. Tried and dropped: skipping voices decayed below −100 dBFS (see `src/VENDORED.md`); on Salamander none ever got there.
 
 ## Offline (done for 1.0.3, 2026-10-16)
-1. Keyboard, through the engine API (x86, ASan/UBSan): the C keys read C3, C4, C5; a tap on C3 lights the key and plays
-   (one voice) and goes dark after 0.6 s; a switch-off echo on an unlit key does nothing; a MIDI note lights its black
-   key and its note-off darkens it; ‹ › shift by octaves and clamp; the octave is in the saved state.
+1. Piano keys, through the engine API (x86, ASan/UBSan): note-ons for C4 and F#4 report `key_60` and `key_66` changed and
+   read On; C4's note-off reports `key_60` again and reads Off; a host set of a key parameter is ignored.
 2. Browser: a tap, its echo and a second tap at once on row 1 of the places list opened Plugin Library once.
-3. `tools/test_arm.sh` (ARM, the release `.so` through a VST2 host): tapping "Key C+1" (C4) plays (rms 0.023) and is
-   silent again 1.4 s later; Salamander and the key-switch instrument load and play as before. Host test PASSED (its known
-   `note 60` warn).
-4. Skin: built without new touch overlaps except the Frequency presets' open list over two white keys (that list already
-   overlaps other controls the same way); screen mock with lit keys: `docs/screen.png`.
+3. `tools/test_arm.sh` (ARM, the release `.so` through a VST2 host): during note 60 "Key C4 down" reads On, after the
+   note-off Off; Salamander and the key-switch instrument load and play as before. Host test PASSED (its known `note 60`
+   warn).
+4. Skin: 128 pressed-key pictures (only that key's pixels, cut from the strip drawn pressed), each shown by its
+   parameter; no new touch overlaps. Screen mock with C4, E4, G4 down: `docs/screen.png`.
 
 ### The offline harnesses (`tests/offline/`)
 Built against `build/libsfizz_x86_all.a` (from `tools/build_x86_test_libs.sh`) on x86, or against the armhf archives in

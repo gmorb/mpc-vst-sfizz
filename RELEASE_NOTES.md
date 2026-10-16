@@ -1,12 +1,12 @@
 # sfizz for MPC OS 1.0.3
 
-The keyboard at the bottom of the screen is now playable, and the SFZ browser no longer acts twice on one tap.
+The piano strip at the bottom of the screen now shows the keys being played, and the SFZ browser no longer acts twice on
+one tap.
 
 ## Changes since 1.0.2
-- **Playable keyboard**: two octaves and a C, shifted by octave with ‹ ›. Keys light while they sound, from MIDI or a
-  tap; a tap plays the note at velocity 100 for 0.6 s (MPC reports a screen touch, not the finger lifting). Taps play
-  sfizz directly and aren't recorded by MPC's sequencer. The octave is saved with the project. It replaces the full
-  128-key picture, whose keys were too narrow to touch.
+- **Piano shows played keys**: a key shows pressed while its note is held (from pads, a MIDI controller or the
+  sequencer), drawn as sfizz's editor draws it: a pressed white key turns grey, a black key lighter. The strip is
+  otherwise unchanged; touching it doesn't play.
 - **Browser**: one tap, one action. A tap that landed as a new folder appeared could act again on the new folder's row
   (open a folder and then whatever was under the finger). Taps within a third of a second of a new listing, taps made on
   a listing that has since changed, and a row's switch-off echo are now ignored.

@@ -125,7 +125,7 @@ Synths folder (for example on a card). Running it again upgrades in place.</p>
 <div class="section">
 <h2>4. The screen</h2>
 <p>sfizz's desktop editor has four tabs. On the MPC they are side by side on one page: the header, then
-<b>Information</b>, <b>Controls</b> and <b>Settings</b>, then a keyboard you can play.</p>
+<b>Information</b>, <b>Controls</b> and <b>Settings</b>, then the piano.</p>
 <figure><img src="../screen_annotated.png" alt="Annotated screen"><figcaption>The screen with Salamander Grand Piano V3 loaded.</figcaption></figure>
 <ol class="callouts">
   <li><b>File name</b> of the loaded instrument (without <code>.sfz</code>). Shows <i>Loading…</i> while loading.</li>
@@ -138,11 +138,9 @@ Synths folder (for example on a card). Running it again upgrades in place.</p>
   <li><b>Information</b>: the instrument's curves, masters, groups, regions and samples.</li>
   <li><b>Controls</b>: up to eight of the instrument's own controllers, named as the instrument names them, with their CC number.</li>
   <li><b>Settings</b>: engine options, rendering quality and tuning (section 7).</li>
-  <li><b>Keyboard</b>: two octaves and a C. Keys light while they sound, from MIDI (pads, a controller, the sequencer) or
-  from a tap. Tap a key to play it (velocity 100, for 0.6 s; the screen reports a touch, not a finger lifting, so a tap
-  can't be held). Tap a white key below the black keys. <b>‹ ›</b> shift it by an octave; the C keys show their octave
-  (middle C is C4, as sfizz numbers them). Taps play sfizz directly: they don't reach MPC's sequencer, so they aren't
-  recorded. The octave is saved with the project.</li>
+  <li><b>Piano</b>: all 128 notes and their octave numbers (middle C is C4). A key shows pressed (white keys grey,
+  black keys lighter, as in sfizz) while its note is held, from pads, a MIDI controller or the sequencer. It is a
+  display: touching it doesn't play.</li>
 </ol>
 <div class="note">Not on the MPC screen, compared with the desktop editor: the output meters, the Theme and Zoom
 options, the "when freewheeling" quality settings (MPC never freewheels) and the file menu's Edit, Create and Open folder

@@ -678,222 +678,1156 @@
    "type": "readout"
   },
   {
-   "key": "kb_down",
-   "name": "Keyboard octave down",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "momentary": true,
-   "type": "trigger"
+   "key": "key_0",
+   "name": "Key C-1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kb_up",
-   "name": "Keyboard octave up",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "momentary": true,
-   "type": "trigger"
+   "key": "key_1",
+   "name": "Key C#-1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_1",
-   "name": "Key C",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_2",
+   "name": "Key D-1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_2",
-   "name": "Key D",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_3",
+   "name": "Key D#-1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_3",
-   "name": "Key E",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_4",
+   "name": "Key E-1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_4",
-   "name": "Key F",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_5",
+   "name": "Key F-1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_5",
-   "name": "Key G",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_6",
+   "name": "Key F#-1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_6",
-   "name": "Key A",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_7",
+   "name": "Key G-1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_7",
-   "name": "Key B",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_8",
+   "name": "Key G#-1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_8",
-   "name": "Key C+1",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_9",
+   "name": "Key A-1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_9",
-   "name": "Key D+1",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_10",
+   "name": "Key A#-1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_10",
-   "name": "Key E+1",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_11",
+   "name": "Key B-1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_11",
-   "name": "Key F+1",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_12",
+   "name": "Key C0 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_12",
-   "name": "Key G+1",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_13",
+   "name": "Key C#0 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_13",
-   "name": "Key A+1",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_14",
+   "name": "Key D0 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_14",
-   "name": "Key B+1",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_15",
+   "name": "Key D#0 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kw_15",
-   "name": "Key C+2",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_16",
+   "name": "Key E0 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kba_1",
-   "name": "Key C#",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_17",
+   "name": "Key F0 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kba_2",
-   "name": "Key D#",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_18",
+   "name": "Key F#0 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kbb_1",
-   "name": "Key F#",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_19",
+   "name": "Key G0 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kbb_2",
-   "name": "Key G#",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_20",
+   "name": "Key G#0 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kbb_3",
-   "name": "Key A#",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_21",
+   "name": "Key A0 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kbc_1",
-   "name": "Key C#+1",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_22",
+   "name": "Key A#0 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kbc_2",
-   "name": "Key D#+1",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_23",
+   "name": "Key B0 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kbd_1",
-   "name": "Key F#+1",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_24",
+   "name": "Key C1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kbd_2",
-   "name": "Key G#+1",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_25",
+   "name": "Key C#1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   },
   {
-   "key": "kbd_3",
-   "name": "Key A#+1",
-   "min": 0,
-   "max": 1,
-   "default": 0,
-   "display": "string"
+   "key": "key_26",
+   "name": "Key D1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_27",
+   "name": "Key D#1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_28",
+   "name": "Key E1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_29",
+   "name": "Key F1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_30",
+   "name": "Key F#1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_31",
+   "name": "Key G1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_32",
+   "name": "Key G#1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_33",
+   "name": "Key A1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_34",
+   "name": "Key A#1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_35",
+   "name": "Key B1 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_36",
+   "name": "Key C2 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_37",
+   "name": "Key C#2 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_38",
+   "name": "Key D2 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_39",
+   "name": "Key D#2 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_40",
+   "name": "Key E2 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_41",
+   "name": "Key F2 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_42",
+   "name": "Key F#2 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_43",
+   "name": "Key G2 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_44",
+   "name": "Key G#2 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_45",
+   "name": "Key A2 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_46",
+   "name": "Key A#2 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_47",
+   "name": "Key B2 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_48",
+   "name": "Key C3 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_49",
+   "name": "Key C#3 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_50",
+   "name": "Key D3 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_51",
+   "name": "Key D#3 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_52",
+   "name": "Key E3 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_53",
+   "name": "Key F3 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_54",
+   "name": "Key F#3 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_55",
+   "name": "Key G3 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_56",
+   "name": "Key G#3 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_57",
+   "name": "Key A3 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_58",
+   "name": "Key A#3 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_59",
+   "name": "Key B3 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_60",
+   "name": "Key C4 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_61",
+   "name": "Key C#4 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_62",
+   "name": "Key D4 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_63",
+   "name": "Key D#4 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_64",
+   "name": "Key E4 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_65",
+   "name": "Key F4 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_66",
+   "name": "Key F#4 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_67",
+   "name": "Key G4 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_68",
+   "name": "Key G#4 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_69",
+   "name": "Key A4 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_70",
+   "name": "Key A#4 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_71",
+   "name": "Key B4 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_72",
+   "name": "Key C5 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_73",
+   "name": "Key C#5 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_74",
+   "name": "Key D5 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_75",
+   "name": "Key D#5 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_76",
+   "name": "Key E5 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_77",
+   "name": "Key F5 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_78",
+   "name": "Key F#5 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_79",
+   "name": "Key G5 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_80",
+   "name": "Key G#5 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_81",
+   "name": "Key A5 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_82",
+   "name": "Key A#5 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_83",
+   "name": "Key B5 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_84",
+   "name": "Key C6 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_85",
+   "name": "Key C#6 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_86",
+   "name": "Key D6 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_87",
+   "name": "Key D#6 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_88",
+   "name": "Key E6 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_89",
+   "name": "Key F6 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_90",
+   "name": "Key F#6 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_91",
+   "name": "Key G6 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_92",
+   "name": "Key G#6 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_93",
+   "name": "Key A6 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_94",
+   "name": "Key A#6 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_95",
+   "name": "Key B6 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_96",
+   "name": "Key C7 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_97",
+   "name": "Key C#7 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_98",
+   "name": "Key D7 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_99",
+   "name": "Key D#7 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_100",
+   "name": "Key E7 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_101",
+   "name": "Key F7 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_102",
+   "name": "Key F#7 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_103",
+   "name": "Key G7 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_104",
+   "name": "Key G#7 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_105",
+   "name": "Key A7 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_106",
+   "name": "Key A#7 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_107",
+   "name": "Key B7 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_108",
+   "name": "Key C8 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_109",
+   "name": "Key C#8 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_110",
+   "name": "Key D8 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_111",
+   "name": "Key D#8 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_112",
+   "name": "Key E8 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_113",
+   "name": "Key F8 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_114",
+   "name": "Key F#8 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_115",
+   "name": "Key G8 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_116",
+   "name": "Key G#8 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_117",
+   "name": "Key A8 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_118",
+   "name": "Key A#8 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_119",
+   "name": "Key B8 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_120",
+   "name": "Key C9 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_121",
+   "name": "Key C#9 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_122",
+   "name": "Key D9 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_123",
+   "name": "Key D#9 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_124",
+   "name": "Key E9 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_125",
+   "name": "Key F9 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_126",
+   "name": "Key F#9 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
+  },
+  {
+   "key": "key_127",
+   "name": "Key G9 down",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": 0
   }
  ]
 }

@@ -13,7 +13,7 @@ Coordinates here are plugin-area pixels (0..1280 x 0..628); layout.conf adds MPC
 """
 import math
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ART = os.path.join(HERE, "art")
@@ -36,6 +36,9 @@ BADGE = (0x00, 0x6b, 0x0b)        # knobLabelBackground ("CC 7")
 PILL = (0x69, 0x6b, 0x67)         # CC name pill and knob disc in the Controls panel
 KS_PILL = (0x9a, 0x9a, 0x9a)      # keyswitch badge (inverted valueBackground)
 KEY_BLACK = (0x59, 0x59, 0x59)
+# a pressed key, as sfizz's piano draws a key the instrument doesn't tint: 0.2 darker (white) or lighter (black) in luma
+KEY_WHITE_DOWN = (0xcc, 0xcc, 0xcc)
+KEY_BLACK_DOWN = (0x8c, 0x8c, 0x8c)
 
 # ---- geometry (plugin pixels) ----
 LOGO = (8, 6, 278, 134)
@@ -45,16 +48,7 @@ INFOP = (8, 148, 278, 382)
 CTRLP = (294, 148, 430, 382)
 SETP = (732, 148, 540, 382)
 BROWSER = (8, 148, 716, 382)      # covers Information + Controls while browsing
-# the playable keyboard: two octaves and a C (15 white keys) between octave buttons. White keys take touches below the
-# black keys (touch boxes must not overlap), black keys above; both are list tiles the engine lights while sounding.
-KB_X, KB_Y, KB_H = 48, 538, 84
-KB_TW, KB_GAP = 77, 2             # white tile width and gap: pitch 79, 15 keys = 1183 px
-KB_P = KB_TW + KB_GAP
-KB_BW, KB_BH = 46, 46             # black key
-KB_WY = KB_Y + KB_BH + 2          # white keys' touch band
-KB_WH = KB_Y + KB_H - KB_WY
-KB_BLACK_GROUPS = (("kba", (0, 1)), ("kbb", (3, 4, 5)), ("kbc", (7, 8)), ("kbd", (10, 11, 12)))   # white key before each
-KEY_LIT = (0xfd, 0xb4, 0x4c)      # a sounding white key (a sounding black key is ORANGE)
+KEYS = (40, 540, 1200, 62)        # piano: 75 white keys, notes 0..127
 
 FX = FILEBOX[0] + 18              # file box text left edge
 FX2 = FILEBOX[0] + FILEBOX[2] - 14
@@ -124,32 +118,69 @@ def chevron(c, cx, cy, size, direction, fill, width=2.2):
 
 # ---- the page ----
 
-def piano(c):
-    """The keyboard under its tiles: white keys (their upper part, above the touch band, is only drawn here), the
-    black keys, and the octave buttons' wells."""
-    w = 15 * KB_P - KB_GAP
-    c.rect(KB_X - 4, KB_Y - 4, w + 8, KB_H + 8, (0xc4, 0xc8, 0xc0))
-    c.rect(KB_X, KB_Y, w, KB_H, INK)
-    for i in range(15):
-        c.rect(KB_X + i * KB_P, KB_Y, KB_TW, KB_H, WHITE)
-    for _, whites in KB_BLACK_GROUPS:
-        for i in whites:
-            x = KB_X + i * KB_P + KB_TW + KB_GAP / 2 - KB_BW / 2
-            c.rect(x, KB_Y, KB_BW, KB_BH, KEY_BLACK)
+def piano(c, white=WHITE, black=KEY_BLACK):
+    x0, y0, kw_total, kh = KEYS
+    n_white = sum(1 for k in range(128) if k % 12 in (0, 2, 4, 5, 7, 9, 11))
+    ww = kw_total / n_white
+    c.rect(x0 - 4, y0 - 4, kw_total + 8, kh + 8, (0xc4, 0xc8, 0xc0))
+    xs = {}
+    i = 0
+    for k in range(128):
+        if k % 12 in (0, 2, 4, 5, 7, 9, 11):
+            x = x0 + i * ww
+            xs[k] = x
+            c.rect(x, y0, ww, kh, white)
+            c.line([(x, y0), (x, y0 + kh)], INK, 1)
+            i += 1
+    c.line([(x0 + kw_total, y0), (x0 + kw_total, y0 + kh)], INK, 1)
+    c.line([(x0, y0), (x0 + kw_total, y0)], INK, 1)
+    c.line([(x0, y0 + kh), (x0 + kw_total, y0 + kh)], INK, 1)
+    bw, bh = ww * 0.6, kh * 0.62
+    for k in range(128):
+        if k % 12 in (1, 3, 6, 8, 10):
+            x = xs[k - 1] + ww - bw / 2
+            c.rect(x, y0, bw, bh, INK)
+            c.rect(x + 1.2, y0, bw - 2.4, bh - 1.4, black)
+    for octave in range(11):   # C-1 .. C9, as sfizz numbers octaves (middle C = C4)
+        k = octave * 12
+        if k in xs:
+            c.text(xs[k] + 2, y0 + kh + 13, str(octave - 1), 15, INK, anchor="lm")
 
 
-def key_tiles():
-    """List-tile pictures for the keys: off and sounding."""
+def key_rects():
+    """Each key's box on the strip (as piano() lays it out): (key, x, y, w, h)."""
+    x0, y0, kw_total, kh = KEYS
+    ww = kw_total / sum(1 for k in range(128) if k % 12 in (0, 2, 4, 5, 7, 9, 11))
+    out, xs, i = [], {}, 0
+    for k in range(128):
+        if k % 12 in (0, 2, 4, 5, 7, 9, 11):
+            xs[k] = x0 + i * ww
+            out.append((k, xs[k], y0, ww, kh))
+            i += 1
+        else:
+            out.append((k, xs[k - 1] + ww - ww * 0.6 / 2, y0, ww * 0.6, kh * 0.62))
+    return out
+
+
+def pressed_keys():
+    """One picture per key, shown over the strip while the key's note is on: the pixels that change when that key is
+    drawn pressed (all white keys pressed in one drawing, all black in another; each key keeps only its own box)."""
+    def strip(white, black):
+        c = Canvas(W, H)
+        piano(c, white, black)
+        return c.im.resize((W, H), Image.LANCZOS)
+    base, whites, blacks = strip(WHITE, KEY_BLACK), strip(KEY_WHITE_DOWN, KEY_BLACK), strip(WHITE, KEY_BLACK_DOWN)
     out = {}
-    for name, w, h, off, on in (("kw", KB_TW, KB_WH, WHITE, KEY_LIT), ("kb", KB_BW, KB_BH, KEY_BLACK, ORANGE)):
-        for state, fill in (("off", off), ("on", on)):
-            c = Canvas(w, h)
-            if name == "kb":
-                c.rect(0, 0, w, h, INK)
-                c.rect(1.2, 0, w - 2.4, h - 1.4, fill)
-            else:
-                c.rect(0, 0, w, h, fill)
-            out[name, state] = c.save("key_%s_%s.png" % (name, state))
+    for k, x, y, w, h in key_rects():
+        src = blacks if k % 12 in (1, 3, 6, 8, 10) else whites
+        box = (int(x) - 1, int(y) - 1, int(x + w) + 2, int(y + h) + 2)
+        a, b = base.crop(box), src.crop(box)
+        mask = Image.eval(ImageChops.difference(a.convert("RGB"), b.convert("RGB")).convert("L"), lambda v: 255 if v > 2 else 0)
+        pic = b.copy()
+        pic.putalpha(mask)
+        name = "key_%d.png" % k
+        pic.save(os.path.join(ART, name))
+        out[k] = ("art/" + name, box)
     return out
 
 
@@ -476,20 +507,9 @@ def write_layout(a):
         "color=2e3436", "when=browse:On"))
     o(L("readout", "cx=%d cy=%d w=%d h=28" % (bx + bw // 2, ly(by + bh - 18), bw - 40), 'label=""', "key=status",
         "tsize=22 tfont=Roboto tcolor=b2b2b2", "when=browse:On"))
-    # keyboard: octave buttons, white keys (touch band below the black keys), black keys in their four groups
-    o(L("button", "cx=%d cy=%d" % (KB_X - 24, ly(KB_Y + KB_H // 2)), 'label=""', "key=kb_down",
-        "img=%s img_on=%s w=36 h=%d" % (a["kb_down"][0], a["kb_down"][1], KB_H)))
-    o(L("button", "cx=%d cy=%d" % (KB_X + 15 * KB_P - KB_GAP + 24, ly(KB_Y + KB_H // 2)), 'label=""', "key=kb_up",
-        "img=%s img_on=%s w=36 h=%d" % (a["kb_up"][0], a["kb_up"][1], KB_H)))
-    o(L("list", "x=%d y=%d w=%d h=%d" % (KB_X, ly(KB_WY), 15 * KB_P - KB_GAP, KB_WH),
-        "cols=15 rows=1 th=%d gap=%d key=kw" % (KB_WH, KB_GAP), "img=%s img_on=%s" % (a["keys"]["kw", "off"], a["keys"]["kw", "on"]),
-        "tsize=20 tfont=Roboto tcolor=595959 talign=center"))
-    for name, whites in KB_BLACK_GROUPS:
-        n = len(whites)
-        x = KB_X + whites[0] * KB_P + KB_TW + KB_GAP // 2 - KB_BW // 2
-        o(L("list", "x=%d y=%d w=%d h=%d" % (x, ly(KB_Y), n * KB_BW + (n - 1) * (KB_P - KB_BW), KB_BH),
-            "cols=%d rows=1 th=%d gap=%d key=%s" % (n, KB_BH, KB_P - KB_BW, name),
-            "img=%s img_on=%s" % (a["keys"]["kb", "off"], a["keys"]["kb", "on"]), "tsize=20 tfont=Roboto tcolor=ffffff"))
+    # the piano strip: a key shows pressed while its note sounds (parameters key_0..key_127, set by the engine)
+    for k, (img, (x0, y0, x1, y1)) in sorted(a["keys"].items()):
+        o(L("art", 'file="%s"' % img, "x=%d y=%d w=%d h=%d" % (x0, ly(y0), x1 - x0, y1 - y0), "when=key_%d:On" % k))
     o('qlinks "SFIZZ" = volume,pan,cc_1,cc_2,cc_3,cc_4,cc_5,cc_6,cc_7,cc_8,tuning_freq,stretch,sample_quality,osc_quality,-,-')
     open(os.path.join(HERE, "layout.conf"), "w").write("\n".join(out) + "\n")
 
@@ -515,9 +535,7 @@ def main():
     a["pgdn"] = tuple(icon_button("pgdn", 34, 34, lambda c, x, y, col: chevron(c, x, y, 16, "down", col)))
     a["reset"] = tuple(icon_button("reset", 30, 28, cross, bg=DARK))
     a["check"] = tuple(checkbox())
-    a["keys"] = key_tiles()
-    a["kb_down"] = tuple(icon_button("kb_down", 36, KB_H, lambda c, x, y, col: chevron(c, x, y, 18, "left", col), bg=DARK))
-    a["kb_up"] = tuple(icon_button("kb_up", 36, KB_H, lambda c, x, y, col: chevron(c, x, y, 18, "right", col), bg=DARK))
+    a["keys"] = pressed_keys()
     a["scala"] = tuple(pill_button("scala", settings_pills()[4][2], 28, DARK))
     write_layout(a)
     print("art/ and layout.conf written")
