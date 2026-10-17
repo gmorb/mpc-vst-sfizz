@@ -30,7 +30,7 @@ then Default).
   Sinc 8, Oscillator quality High and 96 voices (Gen1: Linear, Linear, 64), may keep up to 1 GB of decoded samples
   (Gen1: 384 MB) and streams 2 s ahead of each note (Gen1: 1.25 s). Measured offline, Sinc 8 costs about 1.3× Linear's
   CPU per voice there, about a third of what upstream sfizz needs on the same CPU. The Gen2 build has been tested
-  offline (emulated) only so far.
+  on an MPC Live III (Gen2).
 - **Browser**: one touch now acts once. Every browsing action is ignored for 0.7 s after the previous one or after a new
   folder listing appears.
 - **Lighter defaults on Gen1**: Sample and Oscillator quality start at Linear. Raise Sample quality when there is CPU
