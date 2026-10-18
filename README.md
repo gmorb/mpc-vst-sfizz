@@ -11,8 +11,8 @@
 # sfizz for MPC OS
 
 The [sfizz](https://github.com/sfztools/sfizz) 1.2.3 SFZ sampler as a native instrument plugin for MPC OS standalone
-hardware, on a one-page screen modelled on sfizz's own editor. It plays SFZ libraries from SD cards and USB drives,
-streamed from disk, with key switches, the instrument's own CC controls and Scala tuning. Built on
+hardware, on a one-page screen modelled on sfizz's own editor. It plays SFZ libraries and SoundFont 2 (`.sf2`) files
+from SD cards and USB drives, streamed from disk, with key switches, the instrument's own CC controls and Scala tuning. Built on
 [mpc-vst-plugins](https://github.com/sd88me/mpc-vst-plugins) (VST2 wrapper, skin tools, installer, plugin catalog).
 Requires a modded unit with root access, as every plugin from that project does.
 
@@ -66,6 +66,9 @@ Gen2 has several times Gen1's CPU and memory, so a new sfizz there starts with h
 Everything can still be set on the screen, and a saved project keeps its own settings on either generation. On Gen2,
 Sinc 8 costs about 1.3× Linear's CPU and is far cleaner on samples played away from their root note.
 
+Both builds have been tested on hardware: an Akai Force (Gen1) and an MPC Live III (Gen2), both on MPC OS 3.9.1
+([tested.json](tested.json)).
+
 <p align="center"><img src="docs/screen_gen2.png" alt="Gen2 defaults: Max 96, Sample Sinc 8, Oscillator High" width="80%"></p>
 
 ## What's on the page
@@ -79,13 +82,19 @@ sfizz's editor has four tabs; on the MPC they sit side by side on one page, unde
 | Volume (CC 7) and Pan (CC 10) knobs | Same |
 | Information tab | Left panel: Curves, Masters, Groups, Regions, Samples |
 | Controls tab | Middle panel: the instrument's CC knobs (its `label_cc` names, CC badges), up to 8 |
-| Settings tab | Right panel: Engine options, Rendering quality, Tuning (Scala file, root key, frequency with the historical presets, stretch) |
+| Settings tab | Right panel: Engine options, Rendering quality, Tuning (Scala file, root key, frequency with the historical presets, stretch), and Playing: Mono / Legato with Glide (this port's addition) |
 | Piano | Same strip; keys show pressed while their notes are held, as in sfizz (a display: not playable by touch) |
 
 Left out, because they mean nothing on the MPC: the volume meters, Theme, Zoom, the "when freewheeling" quality rows
 (MPC never freewheels), and the file menu's Edit / Create / Open folder entries.
 
-**Q-Links**: Volume, Pan, the 8 CC knobs, Frequency, Stretch, Sample and Oscillator quality.
+**Q-Links**: Volume, Pan, the 8 CC knobs, Frequency, Stretch, Sample and Oscillator quality, Mode, Glide.
+
+**Mono, Legato and Glide** (Settings › Playing) make any instrument monophonic: **Mono** retriggers each note,
+**Legato** moves the sounding note to the new pitch without a new attack, and **Glide** (Off to 2 s) slides the pitch
+between notes. Letting go of the newest note returns to the one still held. sfizz has neither of these itself: the
+plugin keeps the held notes and adds a per-voice pitch glide to the engine (`src/VENDORED.md`). Instruments with their
+own legato samples (SFZ `trigger=legato`) play their legato in Poly mode.
 
 The drop-down lists (Max, Preload size, Oversampling, Sample and Oscillator quality, Root key, the historical tuning
 presets) open large for the touchscreen: 46 px rows with 20 px text, in as few columns as fit beside their field. The
@@ -99,7 +108,18 @@ SFZ browser is sized for fingers too: six 43 px rows per page, with 44 px Home, 
 ## Instruments
 The browser lists the plugin's own library (`sfizz/Instruments` inside the plugin folder), every SD card and USB drive
 (`/media/*`) and `/sdcard`. Tap a folder to open it, an SFZ to load it; the loaded one is lit green. ‹ › in the header step
-through the SFZ files of the loaded one's folder. A project saves the file by path and finds it by name if the card or
+through the SFZ files of the loaded one's folder.
+
+**SoundFonts (`.sf2`)** open like folders: tap one and the browser lists its presets as `bank:program name`
+(`000:000 Piano 1`); tap a preset to load it. The first time, the preset is converted into an SFZ instrument and WAV
+samples in the plugin's `sfizz/SF2 Cache` folder, which takes a moment for big presets; after that it loads at once.
+‹ › step through the SoundFont's presets, and a **MIDI program change** (with the bank from CC 0) picks a preset of the
+loaded SoundFont, as SoundFont players do. The conversion follows the SoundFont 2.04 rules (key and velocity splits,
+loops, tuning, envelopes, filter, LFOs, exclusive classes); custom SF2 modulators beyond the standard ones aren't
+converted, and compressed SF3 files aren't read. The cache keeps up to 1 GB, dropping the least recently used
+SoundFonts first; deleting the folder is always safe.
+
+![A SoundFont's presets in the browser](docs/sf2.png) A project saves the file by path and finds it by name if the card or
 folder moved. Scala files (`.scl`) go in `sfizz/Scales`; the Scala file button steps through them, × resets to equal temperament.
 
 Samples stream from disk (sfizz's preload + streaming), so libraries larger than the MPC's memory play in full; raise
@@ -137,6 +157,7 @@ releasing and the catalog are in [CLAUDE.md](CLAUDE.md) and [docs/RELEASE_AGENT.
 
 ## Files
 - `src/sfizz_mpc.cpp`: the engine adapter (sfizz → `mpc_engine()`); `src/sfizz/`: vendored sfizz 1.2.3 (`src/VENDORED.md`)
+- `src/sf2_sfz.cpp`: SoundFont 2 → SFZ conversion (preset list, cached SFZ + WAV per preset)
 - `params.json`: the parameters, in VST index order (never reorder: projects store values by index)
 - `design.py` → `art/`, `layout.conf`; `skin_post.py`: TUI.json touch-ups (Roboto text, values inside knobs)
 - `data/`: the plugin's `sfizz/` folder (default instrument and scale, empty library folders)

@@ -1143,10 +1143,53 @@ diff -ruN a/src/sfizz/Synth.cpp b/src/sfizz/Synth.cpp
      ScopedFTZ ftz;
      auto& callbackBreakdown = impl.callbackBreakdown_;
      impl.resetCallbackBreakdown();
+@@ -2189,6 +2194,19 @@
+     }
+ }
+ 
++void Synth::glideNote(int noteNumber, float fromCents, float toCents, float seconds) noexcept
++{
++    // [sfizz for MPC OS] mono/legato modes (the plugin keeps the note stack)
++    Impl& impl = *impl_;
++    for (auto& voice : impl.voiceManager_) {
++        if (voice.isFree() || voice.released())
++            continue;
++        const TriggerEvent& event = voice.getTriggerEvent();
++        if (event.type == TriggerEventType::NoteOn && event.number == noteNumber)
++            voice.setGlide(fromCents, toCents, seconds);
++    }
++}
++
+ void Synth::addExternalDefinition(const std::string& id, const std::string& value)
+ {
+     Impl& impl = *impl_;
+diff -ruN a/src/sfizz/Synth.h b/src/sfizz/Synth.h
+--- a/src/sfizz/Synth.h
++++ b/src/sfizz/Synth.h
+@@ -675,6 +675,11 @@
+     void allSoundOff() noexcept;
+ 
+     /**
++     * @brief [sfizz for MPC OS] Glide the voices note `noteNumber` started and that are still held (Voice::setGlide).
++     */
++    void glideNote(int noteNumber, float fromCents, float toCents, float seconds) noexcept;
++
++    /**
+      * @brief Add external definitions prior to loading.
+      *
+      */
 diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
 --- a/src/sfizz/Voice.cpp
 +++ b/src/sfizz/Voice.cpp
-@@ -13,6 +13,7 @@
+@@ -5,6 +5,7 @@
+ // If not, contact the sfizz maintainers at https://github.com/sfztools/sfizz
+ 
+ #include "Voice.h"
++#include <cmath>
+ #include "Layer.h"
+ #include "AudioBuffer.h"
+ #include "Config.h"
+@@ -13,6 +14,7 @@
  #include "FilterPool.h"
  #include "FlexEnvelope.h"
  #include "Interpolators.h"
@@ -1154,7 +1197,7 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
  #include "LFO.h"
  #include "MathHelpers.h"
  #include "ModifierHelpers.h"
-@@ -122,6 +123,7 @@
+@@ -122,6 +124,7 @@
       * @param buffer
       */
      void ampStageStereo(AudioSpan<float> buffer) noexcept;
@@ -1162,7 +1205,17 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
      /**
       * @brief Amplitude stage for a mono source
       *
-@@ -259,6 +261,7 @@
+@@ -241,6 +244,9 @@
+     uint8_t pitchKeycenter_ { Default::key };
+ 
+     float floatPositionOffset_ { 0.0f };
++    float glideCents_ { 0.0f };    // [sfizz for MPC OS] Voice::setGlide
++    float glideTarget_ { 0.0f };
++    float glideStep_ { 0.0f };     // cents per frame
+     int sourcePosition_ { 0 };
+     int initialDelay_ { 0 };
+     int age_ { 0 };
+@@ -259,6 +265,7 @@
      } loop_;
  
      FileDataHolder currentPromise_;
@@ -1170,7 +1223,15 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
  
      int samplesPerBlock_ { config::defaultSamplesPerBlock };
      float sampleRate_ { config::defaultSampleRate };
-@@ -483,6 +486,7 @@
+@@ -419,6 +426,7 @@
+     impl.region_ = &region;
+ 
+     impl.triggerEvent_ = event;
++    impl.glideCents_ = impl.glideTarget_ = impl.glideStep_ = 0.0f;   // [sfizz for MPC OS]
+     if (impl.triggerEvent_.type == TriggerEventType::CC)
+         impl.triggerEvent_.number = region.pitchKeycenter;
+ 
+@@ -483,6 +491,7 @@
              impl.switchState(State::cleanMeUp);
              return false;
          }
@@ -1178,7 +1239,7 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
          impl.updateLoopInformation();
          impl.speedRatio_ = static_cast<float>(impl.currentPromise_->information.sampleRate / impl.sampleRate_);
          impl.sourcePosition_ = sampleOffset(region, midiState);
-@@ -796,8 +800,10 @@
+@@ -796,8 +805,10 @@
      }
  
      if (region->isStereo()) {
@@ -1191,7 +1252,7 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
          impl.filterStageStereo(buffer);
      } else {
          impl.ampStageMono(buffer);
-@@ -814,7 +820,10 @@
+@@ -814,7 +825,10 @@
              impl.switchState(State::cleanMeUp);
      }
  
@@ -1203,7 +1264,7 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
  
      impl.age_ += buffer.getNumFrames();
      if (impl.triggerDelay_) {
-@@ -900,6 +909,33 @@
+@@ -900,6 +914,33 @@
      // Amplitude EG
      absl::Span<const float> ampegOut(mm.getModulation(masterAmplitudeTarget_), numSamples);
      ASSERT(ampegOut.data());
@@ -1237,7 +1298,7 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
      copy(ampegOut, modulationSpan);
  
      // Amplitude envelope
-@@ -934,7 +970,8 @@
+@@ -934,7 +975,8 @@
          return;
  
      amplitudeEnvelope(*modulationSpan);
@@ -1247,7 +1308,7 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
      applyGain<float>(*modulationSpan, leftBuffer);
  }
  
-@@ -950,10 +987,56 @@
+@@ -950,10 +992,56 @@
          return;
  
      amplitudeEnvelope(*modulationSpan);
@@ -1305,7 +1366,7 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
  void Voice::Impl::panStageMono(AudioSpan<float> buffer) noexcept
  {
      ScopedTiming logger { panningDuration_ };
-@@ -1075,6 +1158,11 @@
+@@ -1075,6 +1163,11 @@
          return;
      }
  
@@ -1317,7 +1378,7 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
      auto source = currentPromise_->getData();
      if (source.getNumFrames() == 0) {
          DBG("[Voice] Empty source in promise");
-@@ -1100,8 +1188,15 @@
+@@ -1100,8 +1193,15 @@
          pitchEnvelope(pitch);
  
          float baseRatio = pitchRatio_ * speedRatio_;
@@ -1335,7 +1396,7 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
  
          // Take the first sample if the voice just started
          if (age_ == 0)
-@@ -1113,6 +1208,9 @@
+@@ -1113,6 +1213,9 @@
          add1<int>(sourcePosition_, *indices);
      }
  
@@ -1345,7 +1406,7 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
      // Update loop characteristics with the current CC state
      updateLoopInformation();
      const auto loop = this->loop_;
-@@ -1214,6 +1312,9 @@
+@@ -1214,6 +1317,9 @@
              }
              i++;
          }
@@ -1355,7 +1416,7 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
      } else { // One shots and loops that have released (for loop sustain) or ended (with loop counts)
          for (unsigned i = 0; i < numSamples; ++i) {
              (*indices)[i] -= sampleSize_ * blockRestarts;
-@@ -1226,6 +1327,9 @@
+@@ -1226,6 +1332,9 @@
                      continue;
                  }
  
@@ -1365,7 +1426,7 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
                  off(int(i), true);
                  fill<int>(indices->subspan(i), sampleEnd);
                  fill<float>(coeffs->subspan(i), 0x1.fffffep-1);
-@@ -1356,12 +1460,68 @@
+@@ -1356,12 +1465,68 @@
  #endif
  }
  
@@ -1434,6 +1495,78 @@ diff -ruN a/src/sfizz/Voice.cpp b/src/sfizz/Voice.cpp
      auto* ind = indices.data();
      auto* coeff = coeffs.data();
      auto* addingGain = addingGains.data();
+@@ -1708,6 +1873,7 @@
+     impl.age_ = 0;
+     impl.count_ = 1;
+     impl.floatPositionOffset_ = 0.0f;
++    impl.glideCents_ = impl.glideTarget_ = impl.glideStep_ = 0.0f;   // [sfizz for MPC OS]
+     impl.noteIsOff_ = false;
+     impl.sostenutoState_ = Impl::SostenutoState::Up;
+     impl.offed_ = false;
+@@ -1997,6 +2163,33 @@
+ 
+     if (float* mod = mm.getModulation(pitchTarget_))
+         add<float>(absl::MakeSpan(mod, numFrames), pitchSpan);
++
++    // [sfizz for MPC OS] mono/legato glide (Voice::setGlide); at rest it adds nothing, so the output is unchanged
++    if (glideCents_ != 0.0f || glideTarget_ != 0.0f) {
++        for (size_t i = 0; i < numFrames; ++i) {
++            if (glideCents_ != glideTarget_) {
++                glideCents_ += glideStep_;
++                if ((glideStep_ > 0.0f) == (glideCents_ > glideTarget_))
++                    glideCents_ = glideTarget_;
++            }
++            pitchSpan[i] += glideCents_;
++        }
++    }
++}
++
++void Voice::setGlide(float fromCents, float toCents, float seconds) noexcept
++{
++    Impl& impl = *impl_;
++    if (fromCents < 1e29f)   // 1e30: from where it is now (no NaN: sfizz builds with -ffast-math)
++        impl.glideCents_ = fromCents;
++    impl.glideTarget_ = toCents;
++    const float frames = seconds * impl.sampleRate_;
++    if (!(frames >= 1.0f)) {
++        impl.glideCents_ = toCents;
++        impl.glideStep_ = 0.0f;
++    } else {
++        impl.glideStep_ = (toCents - impl.glideCents_) / frames;
++    }
+ }
+ 
+ void Voice::Impl::resetSmoothers() noexcept
+diff -ruN a/src/sfizz/Voice.h b/src/sfizz/Voice.h
+--- a/src/sfizz/Voice.h
++++ b/src/sfizz/Voice.h
+@@ -213,6 +213,11 @@
+      */
+     bool released() const noexcept;
+     /**
++     * @brief [sfizz for MPC OS] Mono/legato glide: an offset in cents added to this voice's pitch, moving in a
++     * straight line to `toCents` over `seconds` (0: at once), from `fromCents` (1e30f: from where it is now).
++     */
++    void setGlide(float fromCents, float toCents, float seconds) noexcept;
++    /**
+      * @brief Can the voice be reused (i.e. is it releasing after being killed or free)
+      *
+      * @return true
+diff -ruN a/src/sfizz/sfizz.cpp b/src/sfizz/sfizz.cpp
+--- a/src/sfizz/sfizz.cpp
++++ b/src/sfizz/sfizz.cpp
+@@ -374,6 +374,11 @@
+     synth->synth.allSoundOff();
+ }
+ 
++void sfz::Sfizz::glideNote(int noteNumber, float fromCents, float toCents, float seconds) noexcept
++{
++    synth->synth.glideNote(noteNumber, fromCents, toCents, seconds);   // [sfizz for MPC OS]
++}
++
+ void sfz::Sfizz::addExternalDefinition(const std::string& id, const std::string& value)
+ {
+     synth->synth.addExternalDefinition(id, value);
 diff -ruN a/src/sfizz/simd/HelpersNEON.cpp b/src/sfizz/simd/HelpersNEON.cpp
 --- a/src/sfizz/simd/HelpersNEON.cpp
 +++ b/src/sfizz/simd/HelpersNEON.cpp
@@ -1610,3 +1743,19 @@ diff -ruN a/src/sfizz/utility/Timing.h b/src/sfizz/utility/Timing.h
  };
  
  }
+diff -ruN a/src/sfizz.hpp b/src/sfizz.hpp
+--- a/src/sfizz.hpp
++++ b/src/sfizz.hpp
+@@ -997,6 +997,12 @@
+     void allSoundOff() noexcept;
+ 
+     /**
++     * @brief [sfizz for MPC OS] Glide the held voices of a note: an offset in cents moving from `fromCents` (1e30f:
++     * from where it is) to `toCents` over `seconds`. For mono and legato playing, where the host keeps the note stack.
++     */
++    void glideNote(int noteNumber, float fromCents, float toCents, float seconds) noexcept;
++
++    /**
+      * @brief Add external definitions prior to loading.
+      *
+      * @since 0.4.0

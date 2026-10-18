@@ -51,11 +51,12 @@ CM
     -DCMAKE_CXX_FLAGS="$HID -fvisibility-inlines-hidden" -DCMAKE_C_FLAGS="$HID" >/dev/null
   cmake --build "$SF" -j"$(nproc)"
   "$TC/zc++" -O2 -std=gnu++17 $HID -fPIC -Isrc/sfizz/src -I"$MV/wrapper" -c src/sfizz_mpc.cpp -o "$OBJ/sfizz_mpc.o"
+  "$TC/zc++" -O2 -std=gnu++17 $HID -fPIC -c src/sf2_sfz.cpp -o "$OBJ/sf2_sfz.o"
   "$TC/zcc" -O2 -std=gnu11 $HID -fPIC -I"$PORT/build" -I"$MV/wrapper" -c "$MV/wrapper/vst2_wrap.c" -o "$OBJ/vst2_wrap.o"
   echo '{ global: VSTPluginMain; local: *; };' > "$OBJ/exports.map"
   local LIBS; LIBS=$(find "$SF/" -name '*.a' -not -path '*CMakeFiles*' | sort)
   "$TC/zc++" -shared -fPIC -Wl,--no-undefined -Wl,--gc-sections -Wl,--version-script="$OBJ/exports.map" -s \
-    "$OBJ/sfizz_mpc.o" "$OBJ/vst2_wrap.o" -Wl,--start-group $LIBS -Wl,--end-group -lpthread -ldl -lm -o "$OUT"
+    "$OBJ/sfizz_mpc.o" "$OBJ/sf2_sfz.o" "$OBJ/vst2_wrap.o" -Wl,--start-group $LIBS -Wl,--end-group -lpthread -ldl -lm -o "$OUT"
   echo "built ${OUT#$PORT/} ($ARCH)"
 }
 case "$WHAT" in

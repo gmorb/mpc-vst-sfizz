@@ -1828,6 +1828,24 @@
     "On"
    ],
    "default": 0
+  },
+  {
+   "key": "mono_mode",
+   "name": "Mode",
+   "options": [
+    "Poly",
+    "Mono",
+    "Legato"
+   ],
+   "default": 0
+  },
+  {
+   "key": "glide",
+   "name": "Glide",
+   "min": 0,
+   "max": 1,
+   "default": 0,
+   "dynamic_display": true
   }
  ]
 }

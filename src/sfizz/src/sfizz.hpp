@@ -997,6 +997,12 @@ public:
     void allSoundOff() noexcept;
 
     /**
+     * @brief [sfizz for MPC OS] Glide the held voices of a note: an offset in cents moving from `fromCents` (1e30f:
+     * from where it is) to `toCents` over `seconds`. For mono and legato playing, where the host keeps the note stack.
+     */
+    void glideNote(int noteNumber, float fromCents, float toCents, float seconds) noexcept;
+
+    /**
      * @brief Add external definitions prior to loading.
      *
      * @since 0.4.0

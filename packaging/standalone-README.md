@@ -1,8 +1,8 @@
 # sfizz for MPC OS
 
-*The sfizz SFZ sampler on your MPC: play SFZ libraries straight from SD cards and USB drives.*
+*The sfizz SFZ sampler on your MPC: play SFZ libraries and SoundFonts straight from SD cards and USB drives.*
 
-The [sfizz](https://github.com/sfztools/sfizz) 1.2.3 SFZ sampler as an instrument plugin for Gen 1 Akai Force and MPC
+The [sfizz](https://github.com/sfztools/sfizz) 1.2.3 SFZ sampler, which also plays SoundFont 2 files, as an instrument plugin for Gen 1 Akai Force and MPC
 units, on a one-page screen modelled on sfizz's own editor: samples streamed from disk (libraries larger than the
 MPC's memory play in full), key switches, the instrument's own controls on knobs and Q-Links, Scala tunings, and up to
 Sinc 72 interpolation. Version @VERSION@.
@@ -50,6 +50,16 @@ Tap **⌄** at the top right of the file box: the SFZ browser lists the plugin's
 then an `.sfz` file to load it; ‹ › in the file box step through the SFZ files in the same folder. Keep each instrument
 as its author ships it: the `.sfz` file finds its samples by their path relative to it. A project saves the instrument
 by path and finds it by name if the card or folder moved. Scala files (`.scl`) go in `sfizz/Scales/`.
+
+## SoundFonts (.sf2)
+SoundFont 2 files open in the browser like folders: tap one to list its presets (`000:000 Piano 1`), tap a preset to
+load it. The first load converts the preset into an SFZ instrument in `sfztools - VST - sfizz/sfizz/SF2 Cache/` (a
+moment for big presets), later loads are instant; the cache keeps up to 1 GB and is safe to delete. ‹ › step through
+the presets, and a MIDI program change (bank from CC 0) switches presets. Compressed SF3 files aren't supported.
+
+## Mono, Legato and Glide
+Settings › Playing: **Mono** plays one note at a time (each note retriggers), **Legato** moves the sounding note to the
+new pitch without a new attack, **Glide** (Off to 2 s) slides between notes. Poly, the default, plays as before.
 
 ## The page
 One page, the four tabs of sfizz's editor side by side: the header (file box with ‹ › ⌄, key switch, Voices / Max /

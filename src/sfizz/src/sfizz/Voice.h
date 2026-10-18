@@ -213,6 +213,11 @@ public:
      */
     bool released() const noexcept;
     /**
+     * @brief [sfizz for MPC OS] Mono/legato glide: an offset in cents added to this voice's pitch, moving in a
+     * straight line to `toCents` over `seconds` (0: at once), from `fromCents` (1e30f: from where it is now).
+     */
+    void setGlide(float fromCents, float toCents, float seconds) noexcept;
+    /**
      * @brief Can the voice be reused (i.e. is it releasing after being killed or free)
      *
      * @return true

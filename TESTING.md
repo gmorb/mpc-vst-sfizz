@@ -99,7 +99,7 @@ Nothing here ran on a Gen2 device; QEMU 8.2 user mode (`qemu-aarch64`) on x86 th
    longest option + 36 px), placed by the kit's rule (below the field, else above, else from the top; columns only when
    needed). Checked: every referenced picture exists, panel pictures match their bounds, the kit's old popup pictures are
    gone; `studio.py preview` (its all-lists-open view) and `tools/mock_screen.py` with each list open look right; host
-   test PASSED. Not yet seen on a device.
+   test PASSED. Seen on the device with 1.0.4 (below).
 2. `tools/package.sh` → both installer zips (catalog checks OK, 0 warnings), the standalone
    `sfizz-for-MPC-OS-1.0.4.zip` and the manual. The standalone zip unpacked into a fake `/media/662522/Synths`: the
    README's sed line fills the Default preset's path, and `plugin-meta.xml` with `%payload-path%` replaced (the
@@ -117,6 +117,59 @@ Nothing here ran on a Gen2 device; QEMU 8.2 user mode (`qemu-aarch64`) on x86 th
 4. Navigation arrows: the file box's ‹ › ⌄ are 44 × 44 touch targets (were 32 × 36) with 25 px, 2.8 px-wide chevrons
    (the file name readout narrowed from 490 to 444 px to make room); the browser's page arrows use the same chevrons.
    No new touch overlaps; screenshots in `docs/` patched to match (`screen*.png`, `compare.png`, the banner).
+
+## Offline: SoundFont 2 support (done for 1.1.0, 2026-10-17)
+Test SoundFonts: the Majora's Mask N64 SoundFont (232 presets, 17 MB) and TimGM6mb (General MIDI, 136 presets with the
+drum kit in bank 128, 6 MB, from the pretty_midi package).
+1. **Converter vs its Python reference** (`tools/sf2sfz.py`, the converter that made the user's Majora's Mask SFZ set):
+   `tests/offline/sf2conv.cpp` (C++, `src/sf2_sfz.cpp`) and `tests/offline/sf2_reference.py` convert every preset of
+   both SoundFonts; `diff -r` of the two outputs: identical, SFZ text and WAV bytes (16-bit; the 24-bit path is the
+   reference's too, but neither file has `sm24` data).
+2. **Damaged files** (`tests/offline/sf2fuzz.cpp`, ASan + UBSan, no recovery): 400 mutations of TimGM6mb (random bytes in
+   the header and the preset data, and truncations): 238 still listed, 952 presets converted, no sanitizer report.
+   A non-SoundFont `.sf2` shows "Can't read broken.sf2: not a SoundFont 2 file"; SF3 files are refused by version.
+3. **Engine API** (`tests/offline/sf2engine.cpp`, ASan + UBSan, x86): the library lists `.sf2` files as folders; a
+   SoundFont lists `000:000 Piano 1` ... `1-6 of 136`; a tap converts and loads (33 regions, 9 samples; the row lights;
+   C4 plays); ‹ › step Piano 1 → 2 → 3 → 2 (the last from the cache); a program change 40 (CC 0 = 0) loads Violin; bank
+   127 program 127 reports "No preset 127:127"; the project line is `file=…/TimGM6mb.sf2#0:40` and reloads; with the path
+   changed to a missing folder it finds the SoundFont by name and the browser opens on it; Majora's presets page by six.
+4. **Cache**: one folder per SoundFont, named by file name, size and date (a moved card reuses it); with a 5 MB test limit
+   (`-DSF2_CACHE_MAX_MB=5`), folders last used 2 and 3 days ago were removed and one used 10 minutes ago kept.
+5. **Program changes while playing** (`tests/offline/sf2pcstress.cpp`, real time, notes every 23 ms, a program change
+   every 290 ms, bank changes): ASan/UBSan and TSan, no reports.
+6. Both builds: host test PASSED (known `note 60` warn); `tools/test_arm.sh` with `TimGM6mb.sf2#0:0`, `#0:40` and
+   `#128:0` (the drum kit) under qemu-arm and qemu-aarch64: Piano 1 33 regions, Violin 9, Standard kit 62; each plays
+   C4 (rms 0.027 / 0.054 / 0.006, the same on both). `.so` files still need glibc 2.27 at most and export only
+   VSTPluginMain.
+
+## Offline: Mono, Legato and Glide (done for 1.1.0, 2026-10-17)
+1. **Pitch and envelope** (engine API, the default sine, C4 held, G4 pressed and released over it, x86 with ASan/UBSan),
+   measured by FFT in 46 ms windows: Poly plays both (261.6 + 392.0 Hz); Mono with Glide Off jumps to 392.0 Hz with a
+   new attack (envelope dips to 0.036 from 0.115) and back to 261.6 Hz on release; Mono with Glide 200 ms passes
+   280.8 / 309.6 / 371.4 Hz at +10 / +60 / +150 ms and settles at 392.0; Legato with Glide Off jumps to 392.0 Hz with
+   no new attack (envelope stays 0.104-0.127); Legato with Glide 200 ms slides the same way without a new attack. After
+   the last release: silence. Mode and Glide are saved in the project.
+2. The same scenarios on the ARM builds (armv7 under qemu-arm, aarch64 under qemu-aarch64): within 3-5 int16 steps of
+   the x86 render (float rounding).
+3. Poly is unchanged: x86 renders of `det.sfz` and `det_fused.sfz` (Linear, Polynomial, Sinc 8, Sinc 24; plain, bend,
+   pan) are identical to the previous build, and to upstream sfizz except Sinc 8's known 8e-8.
+4. **Stress** (`tests/offline/monostress.cpp`): random overlapping notes, the pedal and all-notes-off on the audio
+   thread while another thread changes Mode and Glide every 37 ms, 8 s: ASan/UBSan and TSan, no reports. In Legato
+   with `tests/keyswitch.sfz`, pressing the key-switch key C#1 over a held C4 switched to Staccato and C4 kept sounding.
+5. Host test PASSED (209 parameters: Mode and Glide appended at the end, indices of the old ones unchanged).
+
+## On the device
+1.0.4, 2026-10-17, by the maintainer (`tested.json`): an Akai Force (Gen1) and an MPC Live III (Gen2), both MPC OS 3.9.1.
+
+For 1.1.0, the SoundFont steps to run on a device:
+| # | Step | Result |
+|---|---|---|
+| 1 | Copy an `.sf2` to a card; ⌄ → the card → the SoundFont opens with its presets | |
+| 2 | Tap a preset: "Converting…", then it plays; tap it again later: loads at once (cache) | |
+| 3 | ‹ › step through the presets | |
+| 4 | Program change from a MIDI controller or the sequencer switches presets (if MPC sends them to plugins) | |
+| 5 | Save and reload a project with a SoundFont preset | |
+| 6 | Mode Mono / Legato with Glide Off and 200 ms: one note at a time, legato without a new attack, the slide | |
 
 ## CPU per voice (2026-10-16, both builds, the same method)
 Instructions per voice per 128-frame block, Salamander Grand Piano V3 (WAV), 16 held voices, 1500 blocks minus a run
@@ -160,7 +213,7 @@ ABLIB=./libhammer.so qemu-arm -L /usr/arm-linux-gnueabihf ./abhost "…/Salamand
   the same with 0 blocks into `hot0.txt`, then `python3 hotblocks_agg.py libab_prof.so hot.txt hot0.txt 1500 16`. The
   hotblocks plugin keeps 20 blocks by default: raise its limit in `contrib/plugins/hotblocks.c` (4000 here).
 
-## On the device (to do)
+## On the device: the full checklist
 | # | Step | Result |
 |---|---|---|
 | 1 | `sh install.sh` from the release zip; MPC restarts | |

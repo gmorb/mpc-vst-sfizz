@@ -76,30 +76,30 @@ failure. Look at every preview image, and at a `tools/mock_screen.py` render, af
    ```
    for so in build/sfizz_mpc.so build/aarch64/sfizz_mpc.so; do
      python3 "$MPC_VST/tools/release.py" --so $so --skin "build/skin/sfztools - VST - sfizz" \
-       --entry build/pluginlist-entry.xml --version 1.0.4 --extra data:sfizz --user-data sfizz/Instruments \
+       --entry build/pluginlist-entry.xml --version 1.1.0 --extra data:sfizz --user-data sfizz/Instruments \
        --repo gmorb/mpc-vst-sfizz --license BSD-2-Clause --id sfizz \
-       --about "The sfizz 1.2.3 SFZ sampler (disk streaming, key switches, CC controls, Scala tuning) with a one-page screen modelled on sfizz's own editor." -o dist
+       --about "The sfizz 1.2.3 SFZ sampler, now also playing SoundFont 2 (.sf2) files (disk streaming, key switches, CC controls, Scala tuning), with a one-page screen modelled on sfizz's own editor." -o dist
    done          # add --bench build/bench.txt to the armv7 one only, if you ran the bench (a Gen1 result)
-   for z in dist/sfizz-1.0.4-mpc-armv7.zip dist/sfizz-1.0.4-mpc-aarch64.zip; do
+   for z in dist/sfizz-1.1.0-mpc-armv7.zip dist/sfizz-1.1.0-mpc-aarch64.zip; do
      python3 "$MPC_VST/tools/catalog_check.py" $z --catalog --expect-id sfizz --expect-repo gmorb/mpc-vst-sfizz; done
-   (cd dist && sha256sum sfizz-1.0.4-mpc-*.zip > SHA256SUMS)
+   (cd dist && sha256sum sfizz-1.1.0-mpc-*.zip > SHA256SUMS)
    ```
-   Each check must end `OK: sfizz 1.0.4`.
+   Each check must end `OK: sfizz 1.1.0`.
 4. Device smoke test with that exact zip (TESTING.md, "On the device"). Ask before installing on someone's device: it
    restarts MPC. CPU: `"$MPC_VST/tools/bench.sh" build/sfizz_mpc.so <ip> -j | tee build/bench.txt` with a sampled
    instrument; re-package with `--bench` if you ran it.
 5. Tag and publish with `gh` (every claim backed by the command's output):
    ```
-   git tag v1.0.4 && git push origin main v1.0.4
-   gh release create v1.0.4 --repo gmorb/mpc-vst-sfizz --draft --title "sfizz for MPC OS 1.0.4" \
-     --notes-file packaging/release-notes-v1.0.4.md \
-     dist/sfizz-1.0.4-mpc-armv7.zip dist/sfizz-1.0.4-mpc-aarch64.zip dist/sfizz-for-MPC-OS-1.0.4.zip \
-     dist/sfizz-for-MPC-OS-1.0.4-manual.pdf dist/SHA256SUMS
-   gh release view v1.0.4 --repo gmorb/mpc-vst-sfizz --json isDraft,assets,url     # check
-   gh release edit v1.0.4 --repo gmorb/mpc-vst-sfizz --draft=false --latest        # only after the device test
+   git tag v1.1.0 && git push origin main v1.1.0
+   gh release create v1.1.0 --repo gmorb/mpc-vst-sfizz --draft --title "sfizz for MPC OS 1.1.0" \
+     --notes-file packaging/release-notes-v1.1.0.md \
+     dist/sfizz-1.1.0-mpc-armv7.zip dist/sfizz-1.1.0-mpc-aarch64.zip dist/sfizz-for-MPC-OS-1.1.0.zip \
+     dist/sfizz-for-MPC-OS-1.1.0-manual.pdf dist/SHA256SUMS
+   gh release view v1.1.0 --repo gmorb/mpc-vst-sfizz --json isDraft,assets,url     # check
+   gh release edit v1.1.0 --repo gmorb/mpc-vst-sfizz --draft=false --latest        # only after the device test
    ```
 6. After a device test, add it to `tested.json` (root, default branch), truthfully:
-   `[{"version": "1.0.4", "device": "MPC Live II", "firmware": "3.x.y", "date": "YYYY-MM-DD"}]`. A test of the Gen2 zip
+   `[{"version": "1.1.0", "device": "MPC Live II", "firmware": "3.x.y", "date": "YYYY-MM-DD"}]`. A test of the Gen2 zip
    needs "Gen2" in `device` (e.g. `"MPC Live III (Gen2)"`): that is what gives the Verified Gen2 badge.
 
 ## List it in the catalog (first release only)
@@ -107,10 +107,10 @@ failure. Look at every preview image, and at a `tools/mock_screen.py` render, af
 gh repo fork sd88me/mpc-vst-plugins --clone --remote && cd mpc-vst-plugins && git checkout -b add-sfizz
 cp ../mpc-vst-sfizz/packaging/catalog/sfizz.json catalog/plugins/sfizz.json
 python3 tools/catalog_build.py --check-registry                                  # entry valid
-curl -sI https://raw.githubusercontent.com/gmorb/mpc-vst-sfizz/v1.0.4/docs/screen.png | head -1    # 200
+curl -sI https://raw.githubusercontent.com/gmorb/mpc-vst-sfizz/v1.1.0/docs/screen.png | head -1    # 200
 git add catalog/plugins/sfizz.json && git commit -m "Add sfizz" && git push -u origin add-sfizz
 gh pr create --repo sd88me/mpc-vst-plugins --head gmorb:add-sfizz --title "Add sfizz" \
-  --body "sfizz 1.0.4: the sfizz 1.2.3 SFZ engine for MPC / Force, Gen1 (armv7) and Gen2 (aarch64) zips on one release. Release: <the real release URL>"
+  --body "sfizz 1.1.0: the sfizz 1.2.3 SFZ engine for MPC / Force, Gen1 (armv7) and Gen2 (aarch64) zips on one release. Release: <the real release URL>"
 gh pr view --repo sd88me/mpc-vst-plugins --json url,state,number                # check
 ```
 No versions or checksums in the entry: the catalog reads them from the release. Later releases need no PR. One entry
@@ -148,6 +148,17 @@ The screenshot link is pinned to the tag: it must exist in that tag (`docs/scree
 - **Standalone zip and `vstscanner.sh`**: the scanner fills `%payload-path%` in `plugin-meta.xml` only, not in
   `Presets/0000-Default.xpl` (`install.sh` does both), so the standalone README has a one-line `sed` for the preset.
   The scanner rebuilds the whole plugin list (Gen1 `pluginList-arm` only): one install method per device.
+- **SoundFonts**: `src/sf2_sfz.cpp` converts one preset at a time into `<data>/SF2 Cache/<name>-<hash>/<bank>-<prog>.sfz`
+  + `Samples/s<N>.wav`; the engine names a preset `<file>.sf2#<bank>:<program>` (browser rows, `file_path`, projects).
+  Its output must stay identical to `tools/sf2sfz.py` (`tests/offline/sf2_reference.py` + `sf2conv.cpp`, `diff -r`):
+  change both together. Conversion runs on the worker without `synth_m`, so the old instrument plays meanwhile. Program
+  changes reach the worker through an atomic (the worker wakes every 50 ms), never a lock on the audio thread. Rows show
+  `.sfz` files by stem only: preset names contain dots ("E.Piano 1").
+- **Mono / Legato**: the note stack lives in the engine (`mono_*` in `src/sfizz_mpc.cpp`, audio thread only, fixed
+  arrays); sfizz only gets note-ons/offs and `glideNote` (vendored: a per-voice cents offset, skipped while zero so Poly
+  output stays identical). Legato keeps the first note's voices and glides them; the final note-off goes to that first
+  note (`base`). Key-switch keys (`sw_mask`, set in `describe`) bypass the stack. A mode change flushes the stack.
+  The glide sentinel is a finite 1e30, not NaN: sfizz builds with `-ffast-math`.
 - **Instruments tile**: `vst.json` `"tile": "art/tile.png"` (drawn by `design.py`), as the kit documents; the tile only
   opens the plugin through the Default preset the kit writes beside it.
 - **Parameter 0**: MPC toggles parameter 0 on insert and on every STOP; the kit's wrapper defers host sets of it, which
@@ -167,8 +178,8 @@ The screenshot link is pinned to the tag: it must exist in that tag (`docs/scree
   `STREAM_BUDGET_MAX` in `src/sfizz_mpc.cpp`; `reserveLimit` and `kAheadSeconds` in `FilePool.cpp`), so the armv7 `.so`
   stays byte-identical when only Gen2 changes (check its sha256 against the last build when that is the intent). Keep
   `DEF_VOICES == POLYPHONY[DEF_POLY_IDX]` (a literal on purpose: indexing the table there changed the armv7 layout).
-  On aarch64 the output is within 3e-8 of upstream, not bit-identical (FMA contraction). Not yet run on a Gen2 device;
-  there is no root route on Gen2 that the kit provides, so testers need their own.
+  On aarch64 the output is within 3e-8 of upstream, not bit-identical (FMA contraction). Tested on an MPC Live III (Gen2)
+  with 1.0.4; there is no root route on Gen2 that the kit provides, so testers need their own.
 
 ## Ground rules
 - Never claim a device result you didn't see; say "offline" for QEMU/x86 results. Record device facts in TESTING.md.

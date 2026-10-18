@@ -30,7 +30,11 @@
 #include <dirent.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <unistd.h>
+#include <utime.h>
+#include <ctime>
 #include "sfizz.hpp"
+#include "sf2_sfz.h"
 extern "C" {
 #include "engine.h"
 void sfizz_mpc_set_gentle_loading(int gentle);   // vendored sfizz, FilePool.cpp
@@ -108,6 +112,17 @@ bool is_file(const std::string &p) {
     return !stat(p.c_str(), &st) && S_ISREG(st.st_mode);
 }
 bool less_ci(const std::string &a, const std::string &b) { return strcasecmp(a.c_str(), b.c_str()) < 0; }
+bool ext_match(const char *name, const char *exts) {   // exts: ".sfz" or ".sfz|.sf2"
+    std::string n = name;
+    for (const char *e = exts; *e;) {
+        const char *bar = std::strchr(e, '|');
+        std::string one = bar ? std::string(e, size_t(bar - e)) : std::string(e);
+        if (ends_with_ci(n, one.c_str())) return true;
+        if (!bar) break;
+        e = bar + 1;
+    }
+    return false;
+}
 
 // A folder's entries: sub-folders first, then files ending in `ext`, each sorted by name. Hidden entries and
 // symlinked folders are skipped (no loops); at most MAX_ENTRIES.
@@ -121,7 +136,7 @@ std::vector<Entry> list_dir(const std::string &dir, const char *ext) {
         struct stat lst;
         if (lstat(p.c_str(), &lst)) continue;
         if (S_ISDIR(lst.st_mode)) dirs.push_back({e->d_name, p, true});
-        else if (ends_with_ci(e->d_name, ext) && is_file(p)) files.push_back({e->d_name, p, false});
+        else if (ext_match(e->d_name, ext) && is_file(p)) files.push_back({e->d_name, p, false});
         if (dirs.size() + files.size() >= size_t(MAX_ENTRIES)) break;
     }
     closedir(d);
@@ -135,7 +150,7 @@ std::vector<Entry> list_dir(const std::string &dir, const char *ext) {
 // Look for a file by name under a folder, a few levels deep (a library moved to another card keeps loading).
 std::string find_by_name(const std::string &root, const std::string &name, int depth) {
     if (depth < 0) return {};
-    std::vector<Entry> es = list_dir(root, ".sfz");
+    std::vector<Entry> es = list_dir(root, ".sfz|.sf2");
     for (const Entry &e : es)
         if (!e.dir && e.name == name) return e.path;
     for (const Entry &e : es)
@@ -144,6 +159,113 @@ std::string find_by_name(const std::string &root, const std::string &name, int d
             if (!r.empty()) return r;
         }
     return {};
+}
+
+// ---- SoundFont 2 (sf2_sfz.h) ----
+// A preset is named by a virtual path, "<file>.sf2#<bank>:<program>": the browser lists it, a project saves it, and
+// loading converts the preset into an SFZ file and WAV samples in the plugin's "SF2 Cache" folder (once; later loads
+// reuse it), which sfizz then plays like any SFZ instrument.
+#ifndef SF2_CACHE_MAX_MB   // tests set it lower
+#define SF2_CACHE_MAX_MB 1024
+#endif
+constexpr unsigned long long SF2_CACHE_MAX = (unsigned long long)SF2_CACHE_MAX_MB << 20;   // converted samples kept, all SoundFonts
+
+bool is_sf2(const std::string &p) { return ends_with_ci(p, ".sf2"); }
+
+bool split_sf2(const std::string &v, std::string &file, int &bank, int &program) {
+    size_t h = v.rfind('#');
+    if (h == std::string::npos || !is_sf2(v.substr(0, h))) return false;
+    char extra;
+    if (std::sscanf(v.c_str() + h + 1, "%d:%d%c", &bank, &program, &extra) != 2) return false;
+    file = v.substr(0, h);
+    return true;
+}
+std::string sf2_path(const std::string &file, int bank, int program) {
+    return file + "#" + std::to_string(bank) + ":" + std::to_string(program);
+}
+std::string preset_row(const sf2::Preset &p) {   // "000:000 Grand Piano", as SoundFont editors number them
+    char b[16];
+    std::snprintf(b, sizeof b, "%03d:%03d ", p.bank, p.program);
+    return b + (p.name.empty() ? std::string("(no name)") : p.name);
+}
+
+uint64_t fnv1a(const std::string &s) {
+    uint64_t h = 1469598103934665603ull;
+    for (unsigned char c : s) { h ^= c; h *= 1099511628211ull; }
+    return h;
+}
+unsigned long long tree_bytes(const std::string &dir) {
+    unsigned long long n = 0;
+    if (DIR *d = opendir(dir.c_str())) {
+        while (dirent *e = readdir(d)) {
+            if (!std::strcmp(e->d_name, ".") || !std::strcmp(e->d_name, "..")) continue;
+            std::string p = dir + "/" + e->d_name;
+            struct stat st;
+            if (lstat(p.c_str(), &st)) continue;
+            n += S_ISDIR(st.st_mode) ? tree_bytes(p) : (unsigned long long)st.st_size;
+        }
+        closedir(d);
+    }
+    return n;
+}
+void remove_tree(const std::string &dir) {
+    if (DIR *d = opendir(dir.c_str())) {
+        while (dirent *e = readdir(d)) {
+            if (!std::strcmp(e->d_name, ".") || !std::strcmp(e->d_name, "..")) continue;
+            std::string p = dir + "/" + e->d_name;
+            struct stat st;
+            if (lstat(p.c_str(), &st)) continue;
+            if (S_ISDIR(st.st_mode)) remove_tree(p);
+            else unlink(p.c_str());
+        }
+        closedir(d);
+    }
+    rmdir(dir.c_str());
+}
+
+// The cache folder of one SoundFont: its name, size and date, so a file moved to another card keeps its cache.
+std::string sf2_cache_dir(const std::string &data_dir, const std::string &file) {
+    struct stat st;
+    if (stat(file.c_str(), &st)) return {};
+    std::string root = data_dir + "/SF2 Cache";
+    mkdir(root.c_str(), 0755);
+    std::string name = stem(file);
+    for (char &c : name)
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || std::strchr(" ._()+-", c))) c = '_';
+    char h[24];
+    std::snprintf(h, sizeof h, "-%08llx", (unsigned long long)(fnv1a(base_name(file) + "|" + std::to_string(st.st_size) +
+                                                                     "|" + std::to_string((long long)st.st_mtime)) & 0xffffffffull));
+    std::string dir = root + "/" + name.substr(0, 60) + h;
+    mkdir(dir.c_str(), 0755);
+    utime(dir.c_str(), nullptr);   // most recently used
+    return dir;
+}
+
+// Keep the cache under SF2_CACHE_MAX: the least recently used SoundFonts' folders go first, never `keep` nor one
+// loaded in the last hour (another instance may be playing from it).
+void sf2_cache_prune(const std::string &data_dir, const std::string &keep) {
+    std::string root = data_dir + "/SF2 Cache";
+    struct Item { std::string path; time_t used; unsigned long long bytes; };
+    std::vector<Item> items;
+    unsigned long long total = 0;
+    if (DIR *d = opendir(root.c_str())) {
+        while (dirent *e = readdir(d)) {
+            if (e->d_name[0] == '.') continue;
+            std::string p = root + "/" + e->d_name;
+            struct stat st;
+            if (lstat(p.c_str(), &st) || !S_ISDIR(st.st_mode)) continue;
+            items.push_back({p, st.st_mtime, tree_bytes(p)});
+            total += items.back().bytes;
+        }
+        closedir(d);
+    }
+    std::sort(items.begin(), items.end(), [](const Item &a, const Item &b) { return a.used < b.used; });
+    for (const Item &it : items) {
+        if (total <= SF2_CACHE_MAX) break;
+        if (it.path == keep || it.used > time(nullptr) - 3600) continue;   // in use, maybe by another instance
+        remove_tree(it.path);
+        total -= it.bytes;
+    }
 }
 
 long long now_ms() {
@@ -184,6 +306,8 @@ struct Inst {
     std::condition_variable job_cv;
     std::deque<std::function<void()>> jobs;
     bool quit = false;
+    std::atomic<uint32_t> pc_request{0};   // MIDI program change for an SF2 preset: 1 << 24 | bank << 8 | program
+    int bank_msb = 0;                      // MIDI CC 0 (audio thread only)
 
     // MIDI from the audio thread, applied by render()
     MidiEv midi_q[MAX_MIDI];
@@ -194,6 +318,15 @@ struct Inst {
     std::atomic<int> polyphony_idx{DEF_POLY_IDX}, oversampling_idx{0}, preload_idx{3}, sustain_cancels{0};
     std::atomic<int> sample_quality{DEF_SAMPLE_QUALITY}, osc_quality{DEF_OSC_QUALITY}, root_note{0}, root_oct{5}, tuning_preset{7};
     std::atomic<float> tuning_freq{440.0f}, stretch{0.0f};
+    std::atomic<int> mono_mode{0};        // 0 Poly, 1 Mono, 2 Legato
+    std::atomic<float> glide{0.0f};       // 0..1 (glide_seconds)
+    std::atomic<uint64_t> sw_mask[2] = {}; // the instrument's keyswitch keys: never part of mono/legato playing
+    struct Mono {                         // mono/legato note stack (audio thread only)
+        int notes[16], vels[16], n = 0;
+        int sounding = -1;                // the note heard now
+        int base = -1;                    // the note whose voices are playing (legato: they glide to `sounding`)
+        int mode = 0;
+    } mono;
     std::atomic<int> cc_val[CC_SLOTS];
     std::atomic<int> browse{0};
     std::atomic<uint32_t> dirty{0};      // render(): which cheap settings to (re)apply
@@ -276,13 +409,21 @@ void push_job(Inst *o, std::function<void()> f) {
     o->job_cv.notify_one();
 }
 
+void program_change(Inst *o, int bank, int program);
+
 void worker_main(Inst *o) {
     for (;;) {
         std::function<void()> f;
         {
             std::unique_lock<std::mutex> l(o->job_m);
-            o->job_cv.wait(l, [o] { return o->quit || !o->jobs.empty(); });
+            // wakes every 50 ms too, for program changes (the audio thread only sets an atomic)
+            o->job_cv.wait_for(l, std::chrono::milliseconds(50), [o] { return o->quit || !o->jobs.empty() || o->pc_request.load(); });
             if (o->quit) return;
+            if (o->jobs.empty()) {
+                l.unlock();
+                if (uint32_t pc = o->pc_request.exchange(0)) program_change(o, int(pc >> 8 & 0xFFFF), int(pc & 0xFF));
+                continue;
+            }
             f = std::move(o->jobs.front());
             o->jobs.pop_front();
         }
@@ -355,6 +496,11 @@ void describe(Inst *o) {
         o->sw_labels.clear();
         for (int k : o->q_sw) o->sw_labels[k] = o->q_sw_label.count(k) ? o->q_sw_label[k] : "";
         o->has_sw = !o->q_sw.empty();
+        uint64_t m[2] = {0, 0};
+        for (int k : o->q_sw)
+            if (k >= 0 && k < 128) m[k >> 6] |= 1ull << (k & 63);
+        o->sw_mask[0] = m[0];
+        o->sw_mask[1] = m[1];
     }
     // the instrument's own Volume/Pan defaults become the knobs' values
     if (o->q_cc_value.count(7)) o->volume = int(std::lround(o->q_cc_value[7] * 127.0f));
@@ -371,35 +517,56 @@ void set_status(Inst *o, const std::string &s) {
 // worker: load an SFZ file (empty = the default instrument)
 void load_file(Inst *o, std::string path) {
     if (path.empty()) path = o->data_dir + "/DefaultInstrument.sfz";
-    if (!is_file(path)) {   // moved? look for it by name in the places the browser shows
+    std::string sf2file;
+    int bank = 0, program = 0;
+    bool preset = split_sf2(path, sf2file, bank, program);
+    std::string disk = preset ? sf2file : path;
+    if (!is_file(disk)) {   // moved? look for it by name in the places the browser shows
         std::string found;
         std::vector<std::string> roots = {o->data_dir + "/Instruments"};
         for (const Entry &e : list_dir("/media", "\x01")) roots.push_back(e.path);
         roots.push_back("/sdcard");
         for (const std::string &r : roots)
-            if (found.empty() && is_dir(r)) found = find_by_name(r, base_name(path), 4);
+            if (found.empty() && is_dir(r)) found = find_by_name(r, base_name(disk), 4);
         if (found.empty()) {
-            set_status(o, "Not found: " + base_name(path));
+            set_status(o, "Not found: " + base_name(disk));
             std::lock_guard<std::mutex> l(o->ui_m);
             o->file_path = path;
-            o->file_label = stem(path) + " (missing)";
+            o->file_label = (preset ? base_name(disk) : stem(path)) + " (missing)";
             o->display_rev++;
             return;
         }
-        path = found;
+        if (preset) { sf2file = found; path = sf2_path(found, bank, program); }
+        else path = found;
     }
+    std::string sfz = path, label = stem(path), before;
     o->loading = 1;
     {
         std::lock_guard<std::mutex> l(o->ui_m);
-        o->status = "Loading " + base_name(path) + "...";
+        before = o->file_label;
+        o->status = (preset ? "Converting " + base_name(sf2file) : "Loading " + base_name(path)) + "...";
         o->file_label = "Loading...";
     }
     o->display_rev++;
+    if (preset) {   // SoundFont preset: convert it (or reuse the cache), then load the SFZ
+        std::string error, name, cache = sf2_cache_dir(o->data_dir, sf2file);
+        sfz = cache.empty() ? std::string() : sf2::preset_to_sfz(sf2file, bank, program, cache, error, &name);
+        if (sfz.empty()) {
+            std::lock_guard<std::mutex> l(o->ui_m);
+            o->status = "Could not convert " + base_name(sf2file) + ": " + (error.empty() ? "no cache folder" : error);
+            o->file_label = before;
+            o->loading = 0;
+            o->display_rev++;
+            return;
+        }
+        sf2_cache_prune(o->data_dir, cache);
+        label = name.empty() ? stem(sf2file) : name;
+    }
     bool ok = false, oom = false;
     {
         std::lock_guard<std::mutex> l(o->synth_m);
         try {
-            ok = o->synth.loadSfzFile(path);
+            ok = o->synth.loadSfzFile(sfz);
             if (ok) describe(o);
         } catch (const std::bad_alloc&) {
             oom = true;   // not enough memory for this instrument's preloads
@@ -411,7 +578,7 @@ void load_file(Inst *o, std::string path) {
     {
         std::lock_guard<std::mutex> l(o->ui_m);
         o->file_path = path;
-        o->file_label = stem(path);
+        o->file_label = label;
         char b[96];
         if (ok) std::snprintf(b, sizeof b, "%d regions, %d samples", o->n_regions, o->n_samples);
         o->status = ok ? b : oom ? "Not enough memory for " + base_name(path) : "Could not load " + base_name(path);
@@ -430,6 +597,19 @@ void step_file(Inst *o, int dir) {
         cur = o->file_path;
         folder = cur.empty() || cur == o->data_dir + "/DefaultInstrument.sfz" ? o->br_dir : dir_name(cur);
     }
+    std::string sf2file;
+    int bank, program;
+    if (split_sf2(cur, sf2file, bank, program)) {   // a SoundFont preset: step through its SoundFont's presets
+        std::vector<sf2::Preset> ps;
+        std::string error;
+        if (!sf2::list_presets(sf2file, ps, error) || ps.empty()) { set_status(o, "Can't read " + base_name(sf2file)); o->display_rev++; return; }
+        int i = 0;
+        for (int k = 0; k < int(ps.size()); k++)
+            if (ps[size_t(k)].bank == bank && ps[size_t(k)].program == program) i = k;
+        i = (i + dir + int(ps.size())) % int(ps.size());
+        load_file(o, sf2_path(sf2file, ps[size_t(i)].bank, ps[size_t(i)].program));
+        return;
+    }
     if (folder.empty()) folder = o->data_dir + "/Instruments";
     std::vector<Entry> es = list_dir(folder, ".sfz");
     std::vector<std::string> files;
@@ -442,6 +622,27 @@ void step_file(Inst *o, int dir) {
     load_file(o, files[size_t(i)]);
 }
 
+// worker: a MIDI program change (bank from CC 0) while a SoundFont preset is loaded picks that preset of the same
+// SoundFont, as SoundFont players do. Ignored for SFZ instruments, and when the SoundFont has no such preset.
+void program_change(Inst *o, int bank, int program) {
+    std::string cur, sf2file;
+    {
+        std::lock_guard<std::mutex> l(o->ui_m);
+        cur = o->file_path;
+    }
+    int b, p;
+    if (!split_sf2(cur, sf2file, b, p) || (b == bank && p == program)) return;
+    std::vector<sf2::Preset> ps;
+    std::string error;
+    if (!sf2::list_presets(sf2file, ps, error)) return;
+    for (const sf2::Preset &x : ps)
+        if (x.bank == bank && x.program == program) { load_file(o, sf2_path(sf2file, bank, program)); return; }
+    char m[64];
+    std::snprintf(m, sizeof m, "No preset %03d:%03d in this SoundFont", bank, program);
+    set_status(o, m);
+    o->display_rev++;
+}
+
 // worker: the browser's list of places (the plugin's library, cards and drives) or a folder
 void browse_to(Inst *o, const std::string &dir) {
     std::vector<Entry> es;
@@ -450,14 +651,26 @@ void browse_to(Inst *o, const std::string &dir) {
         for (const Entry &e : list_dir("/media", "\x01"))
             if (e.dir) es.push_back({e.name, e.path, true});
         if (is_dir("/sdcard")) es.push_back({"sdcard", "/sdcard", true});
+    } else if (is_sf2(dir) && is_file(dir)) {   // a SoundFont opens like a folder: its presets
+        std::vector<sf2::Preset> ps;
+        std::string error;
+        if (!sf2::list_presets(dir, ps, error)) {
+            set_status(o, "Can't read " + base_name(dir) + ": " + error);
+            o->display_rev++;
+            return;
+        }
+        for (const sf2::Preset &p : ps) es.push_back({preset_row(p), sf2_path(dir, p.bank, p.program), false});
     } else {
-        es = list_dir(dir, ".sfz");
+        es = list_dir(dir, ".sfz|.sf2");
+        for (Entry &e : es)
+            if (!e.dir && is_sf2(e.path)) e.dir = true;   // shown with a slash, opened with a tap
     }
     std::lock_guard<std::mutex> l(o->ui_m);
     o->br_dir = dir;
     o->br_entries = std::move(es);
     o->br_top = 0;
-    if (!dir.empty() && o->br_entries.empty()) o->status = "No SFZ files or folders here";
+    if (!dir.empty() && o->br_entries.empty()) o->status = is_sf2(dir) ? "No presets in this SoundFont"
+                                                                      : "No SFZ or SF2 files or folders here";
     o->br_gen++;
     o->br_last_ms = now_ms();
     o->display_rev++;
@@ -485,7 +698,7 @@ void browse_tap(Inst *o, int row) {
         e = o->br_entries[size_t(i)];
     }
     if (e.dir) {
-        if (!is_dir(e.path)) {   // the plugin library folder is created on first use
+        if (!is_sf2(e.path) && !is_dir(e.path)) {   // the plugin library folder is created on first use
             mkdir(e.path.c_str(), 0755);
         }
         browse_to(o, e.path);
@@ -618,15 +831,106 @@ void set_held(Inst *o, int note, bool on) {   // audio thread
     }
 }
 
+// ---- Mono and Legato modes (audio thread) ----
+// sfizz has no mono mode or portamento of its own: the plugin keeps the held notes (last note priority) and drives
+// sfizz with note-ons/offs and Synth::glideNote, a per-voice pitch offset in cents (vendored patch).
+// Mono: each new note retriggers (the previous one is released); with Glide it slides in from the previous pitch.
+// Legato: notes played while another is held don't retrigger: the sounding voices glide (or jump, Glide off) to the
+// new pitch, keeping their attack. Releasing the top note returns to the one held before.
+float glide_seconds(float v) { return 2.0f * v * v; }   // 0..2 s, finer at the short end
+constexpr float GLIDE_FROM_HERE = 1e30f;   // Synth::glideNote: start from the voice's current offset
+
+void mono_flush(Inst *o) {   // release whatever the mono/legato stack holds, and forget it
+    Inst::Mono &m = o->mono;
+    if (m.base >= 0) o->synth.noteOff(0, m.mode == 2 ? m.base : m.sounding, 0);
+    m.n = 0;
+    m.base = m.sounding = -1;
+}
+
+void mono_remove(Inst::Mono &m, int note) {
+    int k = 0;
+    for (int i = 0; i < m.n; i++)
+        if (m.notes[i] != note) { m.notes[k] = m.notes[i]; m.vels[k] = m.vels[i]; k++; }
+    m.n = k;
+}
+
+void mono_note_on(Inst *o, int note, int vel) {
+    Inst::Mono &m = o->mono;
+    float g = glide_seconds(o->glide);
+    mono_remove(m, note);
+    if (m.n == 16) mono_remove(m, m.notes[0]);   // the oldest held note drops out
+    m.notes[m.n] = note; m.vels[m.n] = vel; m.n++;
+    if (m.sounding < 0 || (m.mode == 2 && o->synth.getNumActiveVoices() == 0)) {   // nothing sounding: a plain note
+        if (m.base >= 0) o->synth.noteOff(0, m.base, 0);
+        o->synth.noteOn(0, note, vel);
+        m.base = m.sounding = note;
+        return;
+    }
+    if (m.mode == 1) {   // Mono: retrigger, gliding in from the previous pitch
+        int prev = m.sounding;
+        o->synth.noteOff(0, prev, 0);
+        o->synth.noteOn(0, note, vel);
+        if (g > 0.0f) o->synth.glideNote(note, float(prev - note) * 100.0f, 0.0f, g);
+        m.base = m.sounding = note;
+    } else {             // Legato: the playing voices move to the new pitch
+        o->synth.glideNote(m.base, GLIDE_FROM_HERE, float(note - m.base) * 100.0f, g);
+        m.sounding = note;
+    }
+}
+
+bool mono_note_off(Inst *o, int note) {   // false: not a note the stack holds (play it as usual)
+    Inst::Mono &m = o->mono;
+    bool held = false;
+    for (int i = 0; i < m.n; i++) held |= m.notes[i] == note;
+    if (!held) return false;
+    mono_remove(m, note);
+    if (note != m.sounding) return true;   // not the one heard: nothing changes
+    float g = glide_seconds(o->glide);
+    if (m.n > 0) {   // back to the note held before
+        int t = m.notes[m.n - 1];
+        if (m.mode == 1) {
+            o->synth.noteOff(0, note, 0);
+            o->synth.noteOn(0, t, m.vels[m.n - 1]);
+            if (g > 0.0f) o->synth.glideNote(t, float(note - t) * 100.0f, 0.0f, g);
+            m.base = m.sounding = t;
+        } else {
+            o->synth.glideNote(m.base, GLIDE_FROM_HERE, float(t - m.base) * 100.0f, g);
+            m.sounding = t;
+        }
+        return true;
+    }
+    o->synth.noteOff(0, m.mode == 2 ? m.base : note, 0);
+    m.base = m.sounding = -1;
+    return true;
+}
+
+bool is_keyswitch(Inst *o, int note) {
+    return note >= 0 && note < 128 && (o->sw_mask[note >> 6].load(std::memory_order_relaxed) >> (note & 63) & 1);
+}
+
 void play_midi(Inst *o) {
+    int mode = o->mono_mode;
+    if (mode != o->mono.mode) {   // switching modes: release the stack first
+        mono_flush(o);
+        o->mono.mode = mode;
+    }
     for (int k = 0; k < o->midi_n; k++) {
         const uint8_t *m = o->midi_q[k].b;
         int st = m[0] & 0xF0, len = o->midi_q[k].len;
-        if (st == 0x90 && len == 3 && m[2] > 0) { o->synth.noteOn(0, m[1], m[2]); set_held(o, m[1], true); }
-        else if ((st == 0x80 || st == 0x90) && len == 3) { o->synth.noteOff(0, m[1], m[2]); set_held(o, m[1], false); }
+        bool mono = mode != 0 && len == 3 && !is_keyswitch(o, m[1]);
+        if (st == 0x90 && len == 3 && m[2] > 0) {
+            if (mono) mono_note_on(o, m[1], m[2]);
+            else o->synth.noteOn(0, m[1], m[2]);
+            set_held(o, m[1], true);
+        } else if ((st == 0x80 || st == 0x90) && len == 3) {
+            if (!mono || !mono_note_off(o, m[1])) o->synth.noteOff(0, m[1], m[2]);
+            set_held(o, m[1], false);
+        }
         else if (st == 0xB0 && len == 3) {
             if (m[1] == 120 || m[1] == 123) {   // all sound / notes off
                 o->synth.allSoundOff();
+                o->mono.n = 0;
+                o->mono.base = o->mono.sounding = -1;
                 for (int n = 0; n < 128; n++) set_held(o, n, false);
                 continue;
             }
@@ -635,6 +939,8 @@ void play_midi(Inst *o) {
         } else if (st == 0xE0 && len == 3) o->synth.pitchWheel(0, ((m[2] << 7) | m[1]) - 8192);
         else if (st == 0xD0 && len >= 2) o->synth.channelAftertouch(0, m[1]);
         else if (st == 0xA0 && len == 3) o->synth.polyAftertouch(0, m[1], m[2]);
+        else if (st == 0xC0 && len >= 2) o->pc_request = 1u << 24 | uint32_t(o->bank_msb) << 8 | m[1];   // worker acts
+        if (st == 0xB0 && len == 3 && m[1] == 0) o->bank_msb = m[2];
     }
     o->midi_n = 0;
 }
@@ -758,6 +1064,8 @@ void set_param(void *inst, const char *key, const char *val) {
         return;
     }
     if (!std::strcmp(key, "stretch")) { o->stretch = std::max(0.0f, std::min(1.0f, float(std::atof(val)))); o->dirty |= Inst::D_STRETCH; return; }
+    if (!std::strcmp(key, "mono_mode")) { o->mono_mode = clampi(iv, 0, 2); return; }
+    if (!std::strcmp(key, "glide")) { o->glide = std::max(0.0f, std::min(1.0f, float(std::atof(val)))); return; }
     if (!std::strcmp(key, "browse")) { o->browse = iv ? 1 : 0; return; }
     if (int r = br_row_of(key); r >= 0) {
         // One tap, one action. A row's value 0 is the echo of it turning off (or a stale toggle), not a tap; and a tap
@@ -796,10 +1104,12 @@ std::string state_text(Inst *o) {
     char b[512];
     std::snprintf(b, sizeof b,
                   "volume=%d\npan=%d\npolyphony=%d\noversampling=%d\npreload=%d\nsustain_cancels=%d\nsample_quality=%d\n"
-                  "osc_quality=%d\nroot_note=%d\nroot_oct=%d\ntuning_freq=%.2f\ntuning_preset=%d\nstretch=%.4f\n",
+                  "osc_quality=%d\nroot_note=%d\nroot_oct=%d\ntuning_freq=%.2f\ntuning_preset=%d\nstretch=%.4f\n"
+                  "mono_mode=%d\nglide=%.4f\n",
                   o->volume.load(), o->pan.load(), o->polyphony_idx.load(), o->oversampling_idx.load(), o->preload_idx.load(),
                   o->sustain_cancels.load(), o->sample_quality.load(), o->osc_quality.load(), o->root_note.load(),
-                  o->root_oct.load(), double(o->tuning_freq.load()), o->tuning_preset.load(), double(o->stretch.load()));
+                  o->root_oct.load(), double(o->tuning_freq.load()), o->tuning_preset.load(), double(o->stretch.load()),
+                  o->mono_mode.load(), double(o->glide.load()));
     std::string s = "sfizz-mpc 1\nfile=" + o->file_path + "\nscala=" + o->scala_path + "\n" + b;
     for (int i = 0; i < CC_SLOTS; i++)
         if (o->slot_cc[i] >= 0) s += "cc" + std::to_string(o->slot_cc[i]) + "=" + std::to_string(o->cc_val[i].load()) + "\n";
@@ -831,6 +1141,8 @@ void restore_state(Inst *o, const char *text) {
     o->tuning_freq = float(std::max(300.0, std::min(500.0, num("tuning_freq", 440))));
     o->tuning_preset = clampi(int(num("tuning_preset", 7)), 0, N_TUNING - 1);
     o->stretch = float(std::max(0.0, std::min(1.0, num("stretch", 0))));
+    o->mono_mode = clampi(int(num("mono_mode", 0)), 0, 2);
+    o->glide = float(std::max(0.0, std::min(1.0, num("glide", 0))));
     int vol = clampi(int(num("volume", 100)), 0, 127), pan = clampi(int(num("pan", 64)), 0, 127);
     std::map<int, int> ccs;
     for (auto &p : kv)
@@ -857,7 +1169,17 @@ void restore_state(Inst *o, const char *text) {
         o->changed |= CH_VOLUME | CH_PAN;
         o->display_rev++;
     });
-    if (!file.empty()) push_job(o, [o, file] { browse_to(o, dir_name(file)); });
+    // the browser opens where the instrument was found: its folder, or for a SoundFont preset its SoundFont
+    if (!file.empty()) push_job(o, [o] {
+        std::string cur, sf2file;
+        int b, p;
+        {
+            std::lock_guard<std::mutex> l(o->ui_m);
+            cur = o->file_path;
+        }
+        std::string where = split_sf2(cur, sf2file, b, p) ? sf2file : dir_name(cur);
+        if (is_dir(where) || is_file(where)) browse_to(o, where);
+    });
 }
 
 int get_param(void *inst, const char *key, char *buf, int len) {
@@ -880,6 +1202,14 @@ int get_param(void *inst, const char *key, char *buf, int len) {
     if (!std::strcmp(key, "tuning_preset")) return puti(buf, len, o->tuning_preset);
     if (!std::strcmp(key, "stretch")) return std::snprintf(buf, size_t(len), "%.3f", double(o->stretch.load()));
     if (!std::strcmp(key, "stretch_display")) return std::snprintf(buf, size_t(len), "%d%%", int(std::lround(o->stretch * 100)));
+    if (!std::strcmp(key, "mono_mode")) return puti(buf, len, o->mono_mode);
+    if (!std::strcmp(key, "glide")) return std::snprintf(buf, size_t(len), "%.4f", double(o->glide.load()));
+    if (!std::strcmp(key, "glide_display")) {
+        float s = glide_seconds(o->glide);
+        if (s < 0.0005f) return put(buf, len, "Off");
+        return s < 1.0f ? std::snprintf(buf, size_t(len), "%d ms", int(std::lround(s * 1000)))
+                        : std::snprintf(buf, size_t(len), "%.2f s", double(s));
+    }
     if (!std::strcmp(key, "browse")) return puti(buf, len, o->browse);
     if (!std::strcmp(key, "display_rev")) return puti(buf, len, o->display_rev);
     if (!std::strcmp(key, "voices")) return puti(buf, len, o->active_voices);
@@ -905,7 +1235,7 @@ int get_param(void *inst, const char *key, char *buf, int len) {
         if (std::strstr(key, "_on")) return puti(buf, len, any && !o->br_entries[size_t(i)].dir && o->br_entries[size_t(i)].path == o->file_path);
         if (!any) return put(buf, len, " ");
         const Entry &e = o->br_entries[size_t(i)];
-        return put(buf, len, e.dir ? e.name + "/" : stem(e.name));
+        return put(buf, len, e.dir ? e.name + "/" : ends_with_ci(e.name, ".sfz") ? stem(e.name) : e.name);
     }
     if (!std::strcmp(key, "file_name")) return put(buf, len, o->file_label);
     if (!std::strcmp(key, "ks_label")) {

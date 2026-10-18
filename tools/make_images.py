@@ -99,10 +99,10 @@ body { width: 1280px; height: 640px; overflow: hidden; font-family: R, sans-seri
 </style></head><body>
 <img class="logo" src="%(tile)s">
 <div class="title"><b>for MPC OS</b></div>
-<div class="sub">The sfizz 1.2.3 SFZ sampler as a native plugin for MPC and Force standalone hardware, streaming
+<div class="sub">The sfizz 1.2.3 sampler for MPC and Force standalone hardware: SFZ and SoundFont 2, streaming
 from SD cards and USB drives.</div>
 <div class="chips"><span class="chip g">Gen1 · armv7</span><span class="chip g">Gen2 · aarch64</span>
-<span class="chip">MPC OS 3.x</span><span class="chip">SFZ v2 · key switches · Scala</span><span class="chip">BSD-2-Clause</span></div>
+<span class="chip">MPC OS 3.x</span><span class="chip">SFZ + SoundFont 2</span><span class="chip">key switches · Scala</span><span class="chip">BSD-2-Clause</span></div>
 <div class="foot">Unofficial port. sfizz by the sfztools contributors. Not affiliated with inMusic or Akai.</div>
 <img class="shot" src="%(shot)s">
 </body></html>""" % {"font": font, "tile": data("art/tile.png"), "shot": data("docs/screen.png")}

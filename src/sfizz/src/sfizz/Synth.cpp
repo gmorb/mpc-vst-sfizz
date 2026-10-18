@@ -2194,6 +2194,19 @@ void Synth::allSoundOff() noexcept
     }
 }
 
+void Synth::glideNote(int noteNumber, float fromCents, float toCents, float seconds) noexcept
+{
+    // [sfizz for MPC OS] mono/legato modes (the plugin keeps the note stack)
+    Impl& impl = *impl_;
+    for (auto& voice : impl.voiceManager_) {
+        if (voice.isFree() || voice.released())
+            continue;
+        const TriggerEvent& event = voice.getTriggerEvent();
+        if (event.type == TriggerEventType::NoteOn && event.number == noteNumber)
+            voice.setGlide(fromCents, toCents, seconds);
+    }
+}
+
 void Synth::addExternalDefinition(const std::string& id, const std::string& value)
 {
     Impl& impl = *impl_;

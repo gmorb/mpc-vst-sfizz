@@ -50,7 +50,7 @@ figcaption { font-size: 8.8pt; color: #5b6164; margin-top: 3pt; }
     <div class="band">
       <img src="../../art/logo_text_shaded@2x.png" alt="sfizz">
       <h1>sfizz for MPC OS</h1>
-      <div class="sub">User manual · version 1.0.4</div>
+      <div class="sub">User manual · version 1.1.0</div>
     </div>
     <figure style="margin-top:14pt"><img src="../screen.png" alt="The sfizz screen on the MPC"></figure>
     <p>The sfizz 1.2.3 SFZ sampler as a native instrument plugin for MPC OS hardware, Gen1 and Gen2, on a one-page screen
@@ -84,27 +84,27 @@ figcaption { font-size: 8.8pt; color: #5b6164; margin-top: 3pt; }
   <li><b>An MPC OS device</b>, either generation, each with its own zip:
   <table style="margin:6pt 0">
     <tr><th>Generation</th><th>Devices</th><th>Zip</th></tr>
-    <tr><td><b>Gen1</b> (RK3288, 32-bit)</td><td>Force, MPC Live, Live II, One, X, Key 61</td><td><code>sfizz-1.0.4-mpc-armv7.zip</code></td></tr>
-    <tr><td><b>Gen2</b> (RK3588, 64-bit)</td><td>MPC Live III and other RK3588 units</td><td><code>sfizz-1.0.4-mpc-aarch64.zip</code></td></tr>
+    <tr><td><b>Gen1</b> (RK3288, 32-bit)</td><td>Force, MPC Live, Live II, One, X, Key 61</td><td><code>sfizz-1.1.0-mpc-armv7.zip</code></td></tr>
+    <tr><td><b>Gen2</b> (RK3588, 64-bit)</td><td>MPC Live III and other RK3588 units</td><td><code>sfizz-1.1.0-mpc-aarch64.zip</code></td></tr>
   </table>
-  The installer checks that the zip matches the device and names the right one if it doesn't. The Gen2 build is new in
-  this release and has been tested offline only so far.</li>
+  The installer checks that the zip matches the device and names the right one if it doesn't. Both builds have been tested
+  on hardware (an Akai Force and an MPC Live III, MPC OS 3.9.1).</li>
   <li><b>MPC OS 3.x.</b> The screen uses the 3.x skin format.</li>
   <li><b>Root shell access (SSH)</b> to the device. Stock MPC OS doesn't offer this: the device must be modded. The
   installer edits MPC's settings file to register the plugin.</li>
-  <li><b>SFZ instruments</b> on an SD card, a USB drive or in the plugin's own library folder. sfizz reads WAV, FLAC, Ogg
-  Vorbis, AIFF and WavPack samples.</li>
+  <li><b>SFZ instruments or SoundFonts</b> (<code>.sf2</code>) on an SD card, a USB drive or in the plugin's own library
+  folder. sfizz reads WAV, FLAC, Ogg Vorbis, AIFF and WavPack samples.</li>
 </ul>
 <div class="warn">Installing plugins this way is unofficial. Back up your projects and settings first, and use it at your own risk.</div>
 
 <h2 style="margin-top:16pt">2. Installing and uninstalling</h2>
 <h3>Scripted install (recommended)</h3>
 <ol>
-  <li>Download the zip for your device (<code>sfizz-1.0.4-mpc-armv7.zip</code> for Gen1,
-  <code>sfizz-1.0.4-mpc-aarch64.zip</code> for Gen2) from the project's GitHub Releases page and unzip it on your computer.
-  Both unzip to a folder named <code>sfizz-1.0.4</code>.</li>
-  <li>Copy the whole folder to the device:<pre>scp -r sfizz-1.0.4 root@&lt;device-ip&gt;:/tmp/</pre></li>
-  <li>Run the installer:<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.4/install.sh</pre></li>
+  <li>Download the zip for your device (<code>sfizz-1.1.0-mpc-armv7.zip</code> for Gen1,
+  <code>sfizz-1.1.0-mpc-aarch64.zip</code> for Gen2) from the project's GitHub Releases page and unzip it on your computer.
+  Both unzip to a folder named <code>sfizz-1.1.0</code>.</li>
+  <li>Copy the whole folder to the device:<pre>scp -r sfizz-1.1.0 root@&lt;device-ip&gt;:/tmp/</pre></li>
+  <li>Run the installer:<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.1.0/install.sh</pre></li>
 </ol>
 <p>The installer checks the device, asks for confirmation, <b>stops MPC</b> (save your project first), copies the plugin
 folder to <code>/sdcard/Synths/sfztools - VST - sfizz/</code>, backs up <code>MPC.settings</code>, adds sfizz to MPC's
@@ -114,7 +114,7 @@ Synths folder (for example on a card; on Gen2 an internal Synths folder may be r
 (the <code>mpc-store.sh</code> command and the desktop app) pick the right zip for the device by themselves.</p>
 <h3>Standalone install with vstscanner (Gen1)</h3>
 <p>If your device registers plugins with <code>vstscanner.sh</code> from the Force VST plugins distribution (for example
-on MockbaMod), use <code>sfizz-for-MPC-OS-1.0.4.zip</code> instead: the same Gen1 plugin as a plain folder. Example for a
+on MockbaMod), use <code>sfizz-for-MPC-OS-1.1.0.zip</code> instead: the same Gen1 plugin as a plain folder. Example for a
 MockbaMod card mounted at <code>/media/662522</code>:</p>
 <ol>
   <li>Copy the <code>sfztools - VST - sfizz</code> folder into <code>/media/662522/Synths</code>, next to <code>vstscanner.sh</code>.</li>
@@ -132,7 +132,7 @@ it with <code>install.sh</code>. To update, replace the folder (keep files you p
 <p>The zip's <code>INSTALL.md</code> lists the manual steps: copy the plugin folder, stop MPC, back up and edit
 <code>MPC.settings</code>, start MPC.</p>
 <h3>Uninstall</h3>
-<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.0.4/uninstall.sh</pre>
+<pre>ssh root@&lt;device-ip&gt; sh /tmp/sfizz-1.1.0/uninstall.sh</pre>
 <p>This removes the plugin folder and its plugin-list entry, and restarts MPC. SFZ files you put in the plugin's
 <code>sfizz/Instruments</code> folder are kept. Projects that used sfizz load without it.</p>
 
@@ -164,7 +164,7 @@ it with <code>install.sh</code>. To update, replace the folder (keep files you p
   <li><b>Volume</b> and <b>Pan</b>: MIDI CC 7 and CC 10 for the instrument (0–127; pan 64 is centre).</li>
   <li><b>Information</b>: the instrument's curves, masters, groups, regions and samples.</li>
   <li><b>Controls</b>: up to eight of the instrument's own controllers, named as the instrument names them, with their CC number.</li>
-  <li><b>Settings</b>: engine options, rendering quality and tuning (section 7).</li>
+  <li><b>Settings</b>: engine options, rendering quality, tuning and playing mode (section 7).</li>
   <li><b>Piano</b>: all 128 notes and their octave numbers (middle C is C4). A key shows pressed (white keys grey,
   black keys lighter, as in sfizz) while its note is held, from pads, a MIDI controller or the sequencer. It is a
   display: touching it doesn't play.</li>
@@ -176,7 +176,7 @@ entries.</div>
 
 <div class="section">
 <h2>5. Loading instruments</h2>
-<figure><img src="../browser.png" alt="The SFZ browser"><figcaption>The browser covers the Information and Controls panels while it is open.</figcaption></figure>
+<figure><img style="width:78%" src="../browser.png" alt="The SFZ browser"><figcaption>The browser covers the Information and Controls panels while it is open.</figcaption></figure>
 <h3>The browser</h3>
 <ul>
   <li><b>⌂</b> (home) lists the places: <b>Plugin Library</b> (the plugin's own <code>sfizz/Instruments</code> folder),
@@ -199,18 +199,44 @@ entries.</div>
 <p>sfizz reads the start of every sample into memory (the <i>preload</i>) and streams the rest from disk while you play.
 A large library can take several seconds to load from a card. The plugin is silent while it loads; notes played during
 a long load are skipped.</p>
+<h3>SoundFonts (.sf2)</h3>
+<figure><img style="width:78%" src="../sf2.png" alt="A SoundFont's presets in the browser"><figcaption>A SoundFont opened in the browser:
+its presets, numbered bank:program.</figcaption></figure>
+<ul>
+  <li><b>Open a SoundFont</b> like a folder: tap the <code>.sf2</code> file (it shows with a slash) and the browser lists
+  its presets as <i>bank:program name</i>, for example <code>000:000 Piano 1</code>; General MIDI drum kits are in bank 128.</li>
+  <li><b>Tap a preset</b> to load it. The first time, sfizz converts it into an SFZ instrument and WAV samples in the
+  plugin's <code>sfizz/SF2 Cache</code> folder: the status line says <i>Converting…</i>, which takes a moment for big
+  presets, and the instrument you had keeps playing until it's done. Later, the same preset loads at once.</li>
+  <li><b>‹ ›</b> in the file box step through the SoundFont's presets.</li>
+  <li><b>Program change</b>: while a SoundFont preset is loaded, a MIDI program change (bank from CC 0) switches to that
+  preset of the same SoundFont, as SoundFont players do, if MPC sends program changes to the plugin.</li>
+  <li>A project saves the SoundFont and the preset, and finds the file by name if it moved.</li>
+  <li>The cache keeps up to 1 GB of converted samples, dropping the least recently used SoundFonts first. Deleting
+  <code>SF2 Cache</code> is always safe: presets are converted again when needed.</li>
+</ul>
+<p>The conversion follows the SoundFont 2.04 rules: key and velocity splits, loops, root key and tuning, attenuation,
+pan, volume and modulation envelopes, filter, LFOs and exclusive classes, and 24-bit samples. Custom SF2 modulators
+beyond the standard ones are not converted, so a few presets that rely on them sound plainer than in their editor.
+Compressed SF3 files can't be read: use the SF2 version of the SoundFont.</p>
+<h3>Mono and Legato</h3>
+<p>The <b>Playing</b> section turns any instrument, SFZ or SoundFont, into a monophonic one: <b>Mono</b> retriggers each
+note, <b>Legato</b> slides the sounding note to the new pitch without a new attack, and <b>Glide</b> sets how long the
+slide takes. Legato bends the sample that is already playing, so very large intervals sound stretched, as on hardware
+samplers; instruments that come with their own legato samples (SFZ <code>trigger=legato</code>) do their legato in
+Poly mode, as their author made it. sfizz itself has no mono mode or portamento: these are this port's.</p>
 <h3>Instruments that use the extended SFZ format</h3>
 <p>sfizz supports SFZ v1 and v2 and many ARIA extensions (key switches, CC curves, release triggers, crossfades,
 effects). Opcodes it doesn't support are ignored, as on the desktop.</p>
 </div>
 
-<div class="section">
+<div style="margin-top:18pt">
 <h2>6. Controls and MIDI</h2>
 <h3>Q-Links</h3>
 <table>
   <tr><th>Bank</th><th>Q-Links</th></tr>
   <tr><td class="k">Bank 1</td><td>Volume, Pan, Controls 1–6</td></tr>
-  <tr><td class="k">Bank 2</td><td>Controls 7–8, Frequency, Stretch, Sample quality, Oscillator quality</td></tr>
+  <tr><td class="k">Bank 2</td><td>Controls 7–8, Frequency, Stretch, Sample quality, Oscillator quality, Mode, Glide</td></tr>
 </table>
 <p>A Q-Link on an empty Controls slot does nothing. Settings that reload samples (Max voices, Oversampling, Preload size)
 are not on Q-Links, so a turn can't interrupt playing.</p>
@@ -225,6 +251,7 @@ Volume and Pan knobs. A controller that doesn't fit still works from MIDI.</p>
   <li>Pitch bend, channel and polyphonic aftertouch, and the sustain pedal (CC 64) go to sfizz.</li>
   <li>All Sound Off (CC 120) and All Notes Off (CC 123) silence the instrument.</li>
   <li>The plugin plays on any MIDI channel the track sends.</li>
+  <li>Program change (with bank select, CC 0) picks a preset of a loaded SoundFont; SFZ instruments ignore it.</li>
 </ul>
 </div>
 
@@ -255,10 +282,17 @@ large for the touchscreen, below or above their button, in columns when they are
   <tr><td class="k">Frequency</td><td>300–500 Hz (<b>440.0</b>)</td><td>Tuning of A4. Drag the value or turn its Q-Link; the ⌄ next to it
   picks a historical pitch (Baroque 415, French Law 435, European 442 …).</td></tr>
   <tr><td class="k">Stretch</td><td>0–100% (<b>0</b>)</td><td>Piano-style stretch tuning: octaves widen towards the ends of the keyboard.</td></tr>
+  <tr><td class="k">Mode (Playing)</td><td><b>Poly</b>, Mono, Legato</td><td><b>Poly</b>: every note sounds, as the instrument
+  is written. <b>Mono</b>: one note at a time; a new note cuts the previous one and plays its own attack. <b>Legato</b>:
+  one note at a time, and a note played while another is held doesn't restart the sound: the note already playing
+  changes pitch, keeping its attack and tone. In both, letting go of the newest note goes back to the one still held
+  (last-note priority). Key-switch keys keep working as usual.</td></tr>
+  <tr><td class="k">Glide</td><td><b>Off</b> to 2 s</td><td>Portamento for Mono and Legato: the pitch slides from one note
+  to the next over this time (Off: it jumps). Drag the value or turn its Q-Link. No effect in Poly.</td></tr>
 </table>
 </div>
 
-<div class="section">
+<div style="margin-top:18pt">
 <h2>8. Tuning</h2>
 <p>sfizz tunes with Scala (<code>.scl</code>) files, a common format for microtonal and historical scales; thousands are
 freely available online.</p>
@@ -334,6 +368,9 @@ this port, on both generations (measured offline under emulation; lower is bette
   <tr><td>Long held notes end early while playing many keys with a big library</td><td>The sample memory budget is full
   (it is set from the memory free when the plugin starts): the oldest notes give way to new ones. Close other
   memory-hungry plugins or unload unused project samples, then reload the project; or lower Max voices.</td></tr>
+  <tr><td>"Can't read … .sf2"</td><td>The file isn't a SoundFont 2, is damaged, or is a compressed SF3. Use the SF2 version.</td></tr>
+  <tr><td>"Could not convert …"</td><td>Usually the card holding the plugin is full: free some space (or delete old folders
+  in <code>sfizz/SF2 Cache</code>) and tap the preset again.</td></tr>
 </table>
 
 <h2 style="margin-top:16pt">12. Credits and licences</h2>

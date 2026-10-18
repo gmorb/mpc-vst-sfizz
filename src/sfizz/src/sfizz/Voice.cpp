@@ -5,6 +5,7 @@
 // If not, contact the sfizz maintainers at https://github.com/sfztools/sfizz
 
 #include "Voice.h"
+#include <cmath>
 #include "Layer.h"
 #include "AudioBuffer.h"
 #include "Config.h"
@@ -243,6 +244,9 @@ struct Voice::Impl
     uint8_t pitchKeycenter_ { Default::key };
 
     float floatPositionOffset_ { 0.0f };
+    float glideCents_ { 0.0f };    // [sfizz for MPC OS] Voice::setGlide
+    float glideTarget_ { 0.0f };
+    float glideStep_ { 0.0f };     // cents per frame
     int sourcePosition_ { 0 };
     int initialDelay_ { 0 };
     int age_ { 0 };
@@ -422,6 +426,7 @@ bool Voice::startVoice(Layer* layer, int delay, const TriggerEvent& event) noexc
     impl.region_ = &region;
 
     impl.triggerEvent_ = event;
+    impl.glideCents_ = impl.glideTarget_ = impl.glideStep_ = 0.0f;   // [sfizz for MPC OS]
     if (impl.triggerEvent_.type == TriggerEventType::CC)
         impl.triggerEvent_.number = region.pitchKeycenter;
 
@@ -1868,6 +1873,7 @@ void Voice::reset() noexcept
     impl.age_ = 0;
     impl.count_ = 1;
     impl.floatPositionOffset_ = 0.0f;
+    impl.glideCents_ = impl.glideTarget_ = impl.glideStep_ = 0.0f;   // [sfizz for MPC OS]
     impl.noteIsOff_ = false;
     impl.sostenutoState_ = Impl::SostenutoState::Up;
     impl.offed_ = false;
@@ -2157,6 +2163,33 @@ void Voice::Impl::pitchEnvelope(absl::Span<float> pitchSpan) noexcept
 
     if (float* mod = mm.getModulation(pitchTarget_))
         add<float>(absl::MakeSpan(mod, numFrames), pitchSpan);
+
+    // [sfizz for MPC OS] mono/legato glide (Voice::setGlide); at rest it adds nothing, so the output is unchanged
+    if (glideCents_ != 0.0f || glideTarget_ != 0.0f) {
+        for (size_t i = 0; i < numFrames; ++i) {
+            if (glideCents_ != glideTarget_) {
+                glideCents_ += glideStep_;
+                if ((glideStep_ > 0.0f) == (glideCents_ > glideTarget_))
+                    glideCents_ = glideTarget_;
+            }
+            pitchSpan[i] += glideCents_;
+        }
+    }
+}
+
+void Voice::setGlide(float fromCents, float toCents, float seconds) noexcept
+{
+    Impl& impl = *impl_;
+    if (fromCents < 1e29f)   // 1e30: from where it is now (no NaN: sfizz builds with -ffast-math)
+        impl.glideCents_ = fromCents;
+    impl.glideTarget_ = toCents;
+    const float frames = seconds * impl.sampleRate_;
+    if (!(frames >= 1.0f)) {
+        impl.glideCents_ = toCents;
+        impl.glideStep_ = 0.0f;
+    } else {
+        impl.glideStep_ = (toCents - impl.glideCents_) / frames;
+    }
 }
 
 void Voice::Impl::resetSmoothers() noexcept

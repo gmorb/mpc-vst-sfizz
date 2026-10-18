@@ -2,7 +2,7 @@
   "name": "sfizz",
   "vendor": "sfztools",
   "uid": "SfzM",
-  "version": 1004,
+  "version": 1100,
   "targets": ["armv7", "aarch64"],
   "so": "sfizz_mpc.so",
   "params": "params.json",
@@ -19,7 +19,8 @@
   "build": {
     "root": ".",
     "sources": [
-      "src/sfizz_mpc.cpp"
+      "src/sfizz_mpc.cpp",
+      "src/sf2_sfz.cpp"
     ],
     "cflags": [
       "-std=gnu++17",

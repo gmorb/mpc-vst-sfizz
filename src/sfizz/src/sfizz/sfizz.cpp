@@ -374,6 +374,11 @@ void sfz::Sfizz::allSoundOff() noexcept
     synth->synth.allSoundOff();
 }
 
+void sfz::Sfizz::glideNote(int noteNumber, float fromCents, float toCents, float seconds) noexcept
+{
+    synth->synth.glideNote(noteNumber, fromCents, toCents, seconds);   // [sfizz for MPC OS]
+}
+
 void sfz::Sfizz::addExternalDefinition(const std::string& id, const std::string& value)
 {
     synth->synth.addExternalDefinition(id, value);

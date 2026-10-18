@@ -75,6 +75,13 @@ output matches upstream to within 3e-8 (1e-7 at Sinc 8) rather than bit for bit:
 differently in upstream's scalar loops than in the port's NEON ones. Per-voice instruction counts for both builds are
 in TESTING.md ("CPU per voice").
 
+### Mono / Legato glide (`Voice.*`, `Synth.*`, `sfizz.hpp`, `sfizz.cpp`)
+sfizz has no mono mode or portamento. `Voice::setGlide` adds a per-voice pitch offset in cents that moves linearly to a
+target over a time (applied at the end of `pitchEnvelope`, so sample and oscillator voices both follow it), and
+`Synth::glideNote` / `Sfizz::glideNote` apply it to the held voices a note started. The plugin keeps the note stack
+(`src/sfizz_mpc.cpp`). While no glide is set the offset is skipped entirely: output is unchanged (x86 renders of the
+identity test instruments identical to the previous build at every quality tested).
+
 ### Robustness
 - `ScopedFTZ.cpp`: the ARM destructor wrote the saved FPSCR with `vmrs` (a read) instead of `vmsr`, so flush-to-zero was
   never restored for the host. Fixed (and `msr fpcr` on aarch64).

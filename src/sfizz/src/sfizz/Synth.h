@@ -675,6 +675,11 @@ public:
     void allSoundOff() noexcept;
 
     /**
+     * @brief [sfizz for MPC OS] Glide the voices note `noteNumber` started and that are still held (Voice::setGlide).
+     */
+    void glideNote(int noteNumber, float fromCents, float toCents, float seconds) noexcept;
+
+    /**
      * @brief Add external definitions prior to loading.
      *
      */

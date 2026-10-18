@@ -266,6 +266,9 @@ def settings_panel(c):
     for i, s in enumerate(("Scala file", "Root key", "Frequency")):
         label(SET_B, y + 58 + i * 36, s)
     label(SET_B, y + 212, "Stretch")
+    title(SET_B, y + 256, "Playing")
+    for i, s in enumerate(("Mode", "Glide")):
+        label(SET_B, y + 294 + i * 36, s)
     # value pills behind the live values (sfizz's dark value buttons)
     for px, py, pw in settings_pills():
         c.rrect(px, py, pw, 28, 5, DARK)
@@ -281,7 +284,8 @@ def settings_pills():
             (a2 - 112, y + 210, 112), (a2 - 112, y + 246, 112),      # sample, oscillator
             (b2 - 154, y + 44, 120),                                 # scala file (the X sits after it)
             (b2 - 96, y + 80, 52), (b2 - 40, y + 80, 40),            # root key note, octave
-            (b2 - 122, y + 116, 88)]                                 # frequency
+            (b2 - 122, y + 116, 88),                                 # frequency
+            (b2 - 96, y + 280, 96), (b2 - 96, y + 316, 96)]          # mode, glide
 
 
 def page():
@@ -434,7 +438,7 @@ def write_layout(a):
                  ("seg_inactive", "2e3436"), ("seg_active_tx", "000000"), ("tile_on", "006b0b"), ("display_ink", "ffffff"),
                  ("btn_text", "ffffff")):
         o("theme_%s=%s" % (k, v))
-    o("qlinks_track = volume,pan,cc_1,cc_2,cc_3,cc_4,cc_5,cc_6,cc_7,cc_8,tuning_freq,stretch,sample_quality,osc_quality")
+    o("qlinks_track = volume,pan,cc_1,cc_2,cc_3,cc_4,cc_5,cc_6,cc_7,cc_8,tuning_freq,stretch,sample_quality,osc_quality,mono_mode,glide")
     o("")
     o("[tab SFIZZ]")
     o(L("art", 'file="%s"' % a["bg"], "x=0 y=%d w=1280 h=628 fit=stretch" % YOFF))
@@ -510,6 +514,11 @@ def write_layout(a):
         "field=none accent=none cols=1 cw=300"))
     o(L("knob", "cx=%d cy=%d r=22" % (SET_B + SET_W - 34, ly(sy + 212)), 'label=""', "key=stretch",
         "strip=%s ns=0 vs=15 bw=90" % a["knob_light_s"]))
+    # Playing: Mono / Legato and the glide time (a pill knob, like Frequency: drag it or turn its Q-Link)
+    pill_popup(8, "mono_mode")
+    px, py, pw = pills[9]
+    o(L("knob", "cx=%d cy=%d r=13" % (px + pw // 2, ly(py + 14)), 'label=""', "key=glide",
+        "strip=%s ns=0 vs=16 bw=%d" % (a["blank"], pw)))
     # SFZ browser (over Information + Controls while open)
     bx, by, bw, bh = BROWSER
     o(L("art", 'file="%s"' % a["browser"], "x=%d y=%d w=%d h=%d" % (bx, ly(by), bw, bh), "when=browse:On"))
@@ -534,7 +543,7 @@ def write_layout(a):
     # the piano strip: a key shows pressed while its note sounds (parameters key_0..key_127, set by the engine)
     for k, (img, (x0, y0, x1, y1)) in sorted(a["keys"].items()):
         o(L("art", 'file="%s"' % img, "x=%d y=%d w=%d h=%d" % (x0, ly(y0), x1 - x0, y1 - y0), "when=key_%d:On" % k))
-    o('qlinks "SFIZZ" = volume,pan,cc_1,cc_2,cc_3,cc_4,cc_5,cc_6,cc_7,cc_8,tuning_freq,stretch,sample_quality,osc_quality,-,-')
+    o('qlinks "SFIZZ" = volume,pan,cc_1,cc_2,cc_3,cc_4,cc_5,cc_6,cc_7,cc_8,tuning_freq,stretch,sample_quality,osc_quality,mono_mode,glide')
     open(os.path.join(HERE, "layout.conf"), "w").write("\n".join(out) + "\n")
 
 

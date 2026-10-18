@@ -23,7 +23,7 @@ rm -rf dist && mkdir -p dist/work
 for so in build/sfizz_mpc.so build/aarch64/sfizz_mpc.so; do
   python3 "$MV/tools/release.py" --so "$so" --skin "$SKIN" --entry build/pluginlist-entry.xml --version "$V" \
     --extra data:sfizz --user-data sfizz/Instruments --repo "$REPO" --license BSD-2-Clause --id sfizz \
-    --about "The sfizz 1.2.3 SFZ sampler (disk streaming, key switches, CC controls, Scala tuning) with a one-page screen modelled on sfizz's own editor." \
+    --about "The sfizz 1.2.3 SFZ sampler, now also playing SoundFont 2 (.sf2) files (disk streaming, key switches, CC controls, Scala tuning), with a one-page screen modelled on sfizz's own editor." \
     -o dist >/dev/null
 done
 for z in "dist/sfizz-$V-mpc-armv7.zip" "dist/sfizz-$V-mpc-aarch64.zip"; do
