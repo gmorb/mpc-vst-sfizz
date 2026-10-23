@@ -2,7 +2,7 @@
   "name": "sfizz",
   "vendor": "sfztools",
   "uid": "SfzM",
-  "version": 1100,
+  "version": 1101,
   "targets": ["armv7", "aarch64"],
   "so": "sfizz_mpc.so",
   "params": "params.json",
